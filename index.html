@@ -1,0 +1,993 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Medal Falls</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Chivo+Mono:wght@400;600&display=swap">
+<style>
+  html, body { margin: 0; }
+  [hidden] { display: none !important; }
+  :root {
+    color-scheme: dark;
+    --cab: #0b1620;
+    --panel: #102231;
+    --steel: #c8d2da;
+    --amber: #ffb000;
+    --red: #ff4a3d;
+    --ink: #f4ecd8;
+    --dim: #7f93a3;
+    --display: "Bungee", "Arial Black", Impact, sans-serif;
+    --mono: "Chivo Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  html, body { height: 100%; }
+  body { background: var(--cab); color: var(--ink); font-family: var(--mono); overflow: hidden; }
+  #app { position: relative; height: 100%; overflow: hidden; user-select: none; -webkit-user-select: none; }
+  #c { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
+
+  .hud {
+    position: absolute; top: 0; left: 0; right: 0;
+    display: grid; grid-template-columns: 1fr 1fr; grid-template-areas: "bank won";
+    align-items: start; gap: 12px; padding: 14px 16px 0; pointer-events: none;
+  }
+  .meter { display: grid; gap: 3px; }
+  .meter.bank { grid-area: bank; justify-items: start; }
+  .meter.won { grid-area: won; justify-items: end; text-align: right; }
+  .lbl { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+  .lbl b { color: var(--ink); font-weight: 600; }
+  .num { font-family: var(--display); font-size: clamp(26px, 4vw, 40px); line-height: 1; color: var(--amber);
+         font-variant-numeric: tabular-nums; text-shadow: 0 0 14px rgba(255,176,0,.45); }
+  .meter.won .num { color: var(--ink); text-shadow: 0 0 12px rgba(244,236,216,.25); }
+  .row { display: flex; align-items: center; gap: 8px; }
+  button.plus { width: 30px; height: 30px; padding: 0; border-radius: 50%; font-family: var(--display); font-size: 18px; line-height: 1;
+                letter-spacing: 0; color: #1a1204; background: var(--amber); border-color: #ffd680; box-shadow: 0 0 12px rgba(255,176,0,.5); }
+  button.plus:hover { background: #ffc740; }
+  .regen { font-size: 10px; letter-spacing: .08em; color: var(--dim); min-height: 12px; }
+  .fever { font-family: var(--display); font-size: 12px; color: var(--amber); animation: blink .5s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+  .xpbar { width: 120px; height: 6px; background: #213447; border-radius: 3px; overflow: hidden; }
+  .xpbar i { display: block; height: 100%; width: 0; background: var(--amber); transition: width .2s; }
+
+  #modal[hidden], .fever[hidden] { display: none; }
+  #modal { position: absolute; inset: 0; z-index: 4; display: grid; place-items: center; padding: 16px; background: rgba(5,10,15,.74); }
+  .sheet { width: min(480px, 100%); max-height: 100%; overflow: auto; display: grid; gap: 14px; padding: 20px;
+           background: linear-gradient(#16304a, #0c1b28); border: 2px solid var(--steel); border-radius: 10px; box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+  .sheet h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 26px; color: var(--amber); text-wrap: balance; }
+  .sheet p { margin: 0; font-size: 12px; line-height: 1.5; color: var(--steel); }
+  .sheet .note { font-size: 11px; color: var(--dim); }
+  .packs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .pack { position: relative; display: grid; justify-items: center; gap: 6px; padding: 16px 8px 12px; border: 1px solid #3a5268; border-radius: 8px; background: rgba(11,22,32,.6); }
+  .pack .m { font-family: var(--display); font-size: 24px; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .pack .tag { position: absolute; top: -9px; padding: 2px 7px; border-radius: 3px; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: #fff; background: var(--red); }
+  .pack.offer { grid-column: 1 / -1; border: 2px solid var(--amber); box-shadow: 0 0 20px rgba(255,176,0,.25); }
+  .pack.offer .m { font-size: 30px; color: var(--amber); }
+  .pack .was { font-size: 11px; color: var(--dim); text-decoration: line-through; }
+  .timer { font-size: 11px; letter-spacing: .08em; color: var(--red); font-variant-numeric: tabular-nums; }
+  button.buy { color: #1a1204; background: var(--amber); border-color: #ffd680; min-width: 90px; }
+  button.buy:hover { background: #ffc740; }
+  .days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+  .day { display: grid; gap: 2px; justify-items: center; padding: 8px 2px; border: 1px solid #3a5268; border-radius: 6px; font-size: 9px; letter-spacing: .06em; color: var(--dim); }
+  .day b { font-family: var(--display); font-weight: 400; font-size: 14px; color: var(--ink); }
+  .day.done { opacity: .45; }
+  .day.now { border-color: var(--amber); box-shadow: 0 0 14px rgba(255,176,0,.5); }
+  .day.now b { color: var(--amber); }
+  .sheet .actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+  .hints { display: grid; gap: 4px; }
+  .hints p { margin: 0; }
+  .paytable { font-size: 11px; letter-spacing: .06em; color: var(--dim); text-shadow: 0 1px 3px #000; }
+  .paytable b { color: var(--ink); font-weight: 600; }
+
+  .foot {
+    position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap; padding: 0 16px calc(14px + env(safe-area-inset-bottom, 0px)); pointer-events: none;
+  }
+  .hint { font-size: 12px; color: var(--steel); letter-spacing: .04em; max-width: 60ch; text-shadow: 0 1px 3px #000; }
+  .hint b { color: var(--red); font-weight: 600; }
+  .btns { display: flex; gap: 8px; }
+  button {
+    pointer-events: auto; font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink); background: rgba(16,34,49,.85); border: 1px solid var(--steel); border-radius: 4px; padding: 8px 12px; cursor: pointer;
+  }
+  button:hover { background: #1b3a55; }
+  button:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+  button.refill { color: #1a1204; background: var(--amber); border-color: #ffd680; }
+
+  #pops { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .pop { position: absolute; font-family: var(--display); font-size: 18px; color: var(--amber); text-shadow: 0 0 8px rgba(255,176,0,.6), 0 2px 2px #000;
+         transform: translate(-50%, -50%); animation: rise .9s ease-out forwards; }
+  .pop.gold { font-size: 26px; color: #ffe08a; }
+  @keyframes rise { to { transform: translate(-50%, -190%); opacity: 0; } }
+
+  #banner { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; }
+  #banner .big { font-family: var(--display); font-size: clamp(40px, 9vw, 96px); line-height: .95; color: var(--amber);
+                 text-shadow: 0 0 24px rgba(255,176,0,.7), 0 4px 0 #7a3b00; }
+  #banner .big.jp { color: var(--red); text-shadow: 0 0 30px rgba(255,74,61,.8), 0 4px 0 #5a0d08; }
+  #banner .sub { font-family: var(--display); font-size: clamp(18px, 3vw, 28px); color: var(--ink); margin-top: 6px; }
+  #banner.show { animation: bannerin 1.8s ease-out forwards; }
+  @keyframes bannerin { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.6); } 12% { opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
+                        20% { transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; } }
+
+  #loading { position: absolute; inset: 0; display: grid; place-items: center; background: var(--cab); z-index: 5; text-align: center; padding: 0 16px; }
+  #loading .t { font-family: var(--display); font-size: 28px; color: var(--amber); }
+  #loading .s { font-size: 12px; color: var(--dim); letter-spacing: .1em; text-transform: uppercase; margin-top: 8px; }
+
+  @media (max-width: 640px) {
+    .hud { padding-top: 10px; gap: 8px; }
+    .num { font-size: 22px; }
+    .lbl { font-size: 10px; letter-spacing: .1em; }
+    .xpbar { width: 80px; }
+    button.plus { width: 26px; height: 26px; font-size: 15px; }
+    .packs { gap: 10px; }
+    .day { padding: 6px 1px; }
+    .day b { font-size: 12px; }
+    .paytable { display: none; }
+    .hint { font-size: 11px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pop, #banner.show { animation-duration: .01s; }
+    .fever { animation: none; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="c" aria-label="Coin pusher playfield. Move to aim, press or tap to drop a medal."></canvas>
+
+  <header class="hud">
+    <div class="meter bank">
+      <span class="lbl">Medals</span>
+      <div class="row"><span class="num" id="bank">100</span><button type="button" class="plus" id="shopBtn" aria-label="Get more medals">+</button></div>
+      <span class="regen" id="regen"></span>
+      <span class="fever" id="fever" hidden>Fever · big ring</span>
+    </div>
+    <div class="meter won">
+      <span class="lbl">Paid out</span>
+      <span class="num" id="won">0</span>
+      <span class="lbl">Level <b id="lvl">1</b></span>
+      <div class="xpbar" aria-hidden="true"><i id="xpfill"></i></div>
+    </div>
+  </header>
+
+  <footer class="foot">
+    <div class="hints">
+      <p class="hint">Move to aim · click or hold to drop · drop through the <b>red ring</b> to spin · gold medals pay 10</p>
+      <p class="paytable"><b>777</b> the whole jackpot · <b>BAR</b> 20 + 1 gold · <b>★</b> 10 · <b>◆</b> 5 medals showered</p>
+    </div>
+    <div class="btns">
+      <button type="button" id="mute" aria-pressed="false">Sound on</button>
+    </div>
+  </footer>
+
+  <div id="pops"></div>
+  <div id="banner"></div>
+  <div id="modal" hidden></div>
+  <div id="loading"><div><div class="t">Racking medals…</div><div class="s" id="loadmsg">Loading physics</div></div></div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
+    "rapier": "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.14.0/rapier.es.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import RAPIER from 'rapier';
+
+// ---------- layout (world units; a medal is 1.2 across) ----------
+const TABLE_W = 5.5;                 // half width of the playfield
+const TABLE_FRONT = 6, TABLE_BACK = -11;
+const SIDE_OPEN_Z = 3.4;             // side walls stop here; medals off the sides past it are lost
+const COIN_R = 0.6, COIN_HH = 0.08;
+const PUSH_H = 1.2, PUSH_HALF_D = 4;
+const PUSH_MIN = -2.8, PUSH_MAX = -0.4, PUSH_PERIOD = 3.2;
+const PUSH_MID = (PUSH_MIN + PUSH_MAX) / 2, PUSH_AMP = (PUSH_MAX - PUSH_MIN) / 2;
+const WALL_Z = -6.5;
+const DROP_Y = 4.6, DROP_Z = -1.4, GATE_Y = 3.1;
+const MAX_COINS = 320;
+const STEP = 1 / 120;
+const GOLD_VALUE = 10;
+const TRAY_Y = -2.2, TRAY_D = 3.4;   // payout chute surround: height and depth
+
+const $ = id => document.getElementById(id);
+const rand = (a, b) => a + Math.random() * (b - a);
+const pick = arr => arr[(Math.random() * arr.length) | 0];
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const pusherFront = t => PUSH_MID + PUSH_AMP * Math.sin(t * 2 * Math.PI / PUSH_PERIOD);
+const gateXAt = t => 3.4 * Math.sin(t * 1.1) + 1.0 * Math.sin(t * 2.7 + 1);
+
+// ---------- saved progress (per-viewer convenience) ----------
+const SAVE_KEY = 'medalfalls.v1';
+const JACKPOT_SEED = 200;
+const FREE_CAP = 30, FREE_EVERY = 60000;          // free medals trickle back up to 30, one a minute
+const DAILY = [20, 30, 40, 60, 80, 100, 200];      // login streak rewards, day 1-7
+let bank = 100, won = 0;
+const prog = { level: 1, xp: 0, jackpot: JACKPOT_SEED, streak: 0, lastDaily: '', regenAt: Date.now(), offerEnds: 0, starterBought: false, spent: 0 };
+try {
+  const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+  if (s) { bank = s.bank | 0; won = s.won | 0; Object.assign(prog, s.prog || {}); }
+} catch (e) {}
+function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ bank, won, prog })); } catch (e) {} }
+setInterval(save, 2000);
+addEventListener('visibilitychange', save);
+
+// ---------- audio ----------
+let ac = null, muted = false;
+function wakeAudio() {
+  if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { ac = null; } }
+  if (ac && ac.state === 'suspended') ac.resume();
+}
+function tone(freq, dur, type = 'sine', vol = 0.1, when = 0, slide = 0) {
+  if (!ac || muted) return;
+  const t = ac.currentTime + when, o = ac.createOscillator(), g = ac.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t);
+  if (slide) o.frequency.exponentialRampToValueAtTime(freq * slide, t + dur);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur + 0.02);
+}
+let lastDing = 0;
+const sfx = {
+  drop() { tone(2600 + Math.random() * 900, .08, 'triangle', .07); tone(5400 + Math.random() * 800, .05, 'sine', .03, .012); },
+  win(gold) { const n = performance.now(); if (n - lastDing < 45) return; lastDing = n;
+    tone(gold ? 1319 : 1568, .16, 'sine', .1); tone(gold ? 1976 : 2349, .22, 'sine', .06, .05); },
+  check() { [880, 1175, 1568].forEach((f, i) => tone(f, .12, 'square', .045, i * .06)); },
+  tick() { tone(1500, .025, 'square', .018); },
+  stop() { tone(480, .07, 'square', .05); },
+  reach() { tone(440, .9, 'sawtooth', .035, 0, 2); },
+  miss() { tone(300, .18, 'triangle', .05, 0, .6); },
+  pay(big) { (big ? [523, 659, 784, 1047, 1319, 1568, 2093, 2637] : [784, 988, 1175, 1568])
+    .forEach((f, i) => tone(f, .22, 'triangle', .07, i * .075)); },
+};
+
+// ---------- renderer / scene ----------
+const canvas = $('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b1620);
+scene.fog = new THREE.Fog(0x0b1620, 28, 55);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.85;
+
+const camera = new THREE.PerspectiveCamera(44, 1, 0.1, 100);
+const camTarget = new THREE.Vector3(0, 0.2, -0.6);
+function resize() {
+  const w = canvas.clientWidth, h = canvas.clientHeight, aspect = w / h;
+  renderer.setSize(w, h, false);
+  camera.aspect = aspect;
+  const hfov = 2 * Math.atan(7.4 / 17.5);
+  const need = 2 * Math.atan(Math.tan(hfov / 2) / aspect) * 180 / Math.PI;
+  camera.fov = clamp(Math.max(44, need), 44, 88);
+  // portrait screens: back the camera up and tilt down so the HUD sits over the marquee, not the medals
+  const portrait = clamp((1.2 - aspect) / 0.7, 0, 1);
+  camera.position.set(0, 10.5 + portrait * 2.5, 14 + portrait * 1.5);
+  camTarget.set(0, 0.2 - portrait * 1.2, -0.6 + portrait * 0.8);
+  camera.lookAt(camTarget);
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+
+const key = new THREE.DirectionalLight(0xfff1dc, 2.2);
+key.position.set(4, 15, 9);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.left = -9; key.shadow.camera.right = 9; key.shadow.camera.top = 12; key.shadow.camera.bottom = -12;
+key.shadow.camera.near = 1; key.shadow.camera.far = 40;
+key.shadow.bias = -0.0006; key.shadow.normalBias = 0.02;
+scene.add(key);
+const warm = new THREE.PointLight(0xffa640, 30, 16, 2);
+warm.position.set(0, 3, 7);
+scene.add(warm);
+
+// ---------- canvas textures ----------
+function canvasTex(w, h, draw, srgb = true) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c);
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
+}
+function starPath(g, cx, cy, ro, ri, n = 5) {
+  g.beginPath();
+  for (let i = 0; i < n * 2; i++) {
+    const r = i % 2 ? ri : ro, a = -Math.PI / 2 + i * Math.PI / n;
+    g.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+  }
+  g.closePath();
+}
+const faceTex = canvasTex(256, 256, (g, w) => {
+  const c = w / 2;
+  g.fillStyle = '#9a9a9a'; g.fillRect(0, 0, w, w);
+  g.fillStyle = '#f2f2f2'; g.beginPath(); g.arc(c, c, 126, 0, 7); g.fill();
+  g.fillStyle = '#a9a9a9'; g.beginPath(); g.arc(c, c, 110, 0, 7); g.fill();
+  const rg = g.createRadialGradient(c - 30, c - 30, 10, c, c, 110);
+  rg.addColorStop(0, '#d4d4d4'); rg.addColorStop(1, '#9c9c9c');
+  g.fillStyle = rg; g.beginPath(); g.arc(c, c, 104, 0, 7); g.fill();
+  g.fillStyle = '#eeeeee';
+  for (let i = 0; i < 28; i++) { const a = i / 28 * Math.PI * 2; g.beginPath(); g.arc(c + Math.cos(a) * 92, c + Math.sin(a) * 92, 3.2, 0, 7); g.fill(); }
+  starPath(g, c, c + 3, 62, 26); g.fillStyle = '#f7f7f7'; g.fill();
+  g.lineWidth = 5; g.strokeStyle = '#7d7d7d'; g.stroke();
+});
+const edgeTex = canvasTex(128, 16, (g, w, h) => {
+  for (let x = 0; x < w; x += 4) { g.fillStyle = (x / 4) % 2 ? '#8a8a8a' : '#f0f0f0'; g.fillRect(x, 0, 4, h); }
+});
+edgeTex.wrapS = THREE.RepeatWrapping; edgeTex.repeat.set(6, 1);
+
+const fieldTex = canvasTex(512, 1024, (g, w, h) => {
+  const zy = z => (z - TABLE_BACK) / (TABLE_FRONT - TABLE_BACK) * h;
+  g.fillStyle = '#1b2733'; g.fillRect(0, 0, w, h);
+  for (let y = 0; y < h; y += 2) { g.fillStyle = `rgba(200,220,235,${Math.random() * 0.05})`; g.fillRect(0, y, w, 1); }
+  // diamond plate lattice
+  g.strokeStyle = 'rgba(160,190,210,.08)'; g.lineWidth = 2;
+  for (let i = -h; i < w + h; i += 46) {
+    g.beginPath(); g.moveTo(i, 0); g.lineTo(i + h, h); g.stroke();
+    g.beginPath(); g.moveTo(i, h); g.lineTo(i + h, 0); g.stroke();
+  }
+  // payout chevrons
+  g.fillStyle = 'rgba(255,176,0,.22)';
+  for (let k = 0; k < 3; k++) {
+    const y = zy(1.4 + k * 1.1);
+    g.beginPath(); g.moveTo(w / 2 - 70, y); g.lineTo(w / 2, y + 34); g.lineTo(w / 2 + 70, y); g.lineTo(w / 2 + 70, y + 14); g.lineTo(w / 2, y + 48); g.lineTo(w / 2 - 70, y + 14); g.closePath(); g.fill();
+  }
+  // lost-medal zones at the open sides
+  const y0 = zy(SIDE_OPEN_Z), y1 = h;
+  g.save(); g.beginPath(); g.rect(0, y0, 34, y1 - y0); g.rect(w - 34, y0, 34, y1 - y0); g.clip();
+  g.fillStyle = 'rgba(255,74,61,.5)';
+  for (let y = y0 - 40; y < y1; y += 22) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y + 60); g.lineTo(w, y + 70); g.lineTo(0, y + 10); g.fill(); }
+  g.restore();
+  // front payout line
+  g.fillStyle = '#ffb000'; g.fillRect(0, h - 10, w, 10);
+  g.fillStyle = 'rgba(255,176,0,.35)'; g.fillRect(0, h - 26, w, 6);
+});
+
+// ---------- materials ----------
+const steelDark = new THREE.MeshStandardMaterial({ color: 0xffffff, map: fieldTex, metalness: 0.75, roughness: 0.5 });
+const tableSide = new THREE.MeshStandardMaterial({ color: 0x1a2531, metalness: 0.7, roughness: 0.5 });
+const chrome = new THREE.MeshStandardMaterial({ color: 0x5f6b75, metalness: 1, roughness: 0.28 });
+const amberGlow = new THREE.MeshStandardMaterial({ color: 0x331f00, emissive: 0xffb000, emissiveIntensity: 2.2 });
+const redGlow = new THREE.MeshStandardMaterial({ color: 0x3a0906, emissive: 0xff2a1a, emissiveIntensity: 1.4 });
+const acrylic = new THREE.MeshStandardMaterial({ color: 0x9fc8e0, metalness: 0.1, roughness: 0.05, transparent: true, opacity: 0.12, depthWrite: false });
+const coinMats = (tint) => [
+  new THREE.MeshStandardMaterial({ color: tint, map: edgeTex, bumpMap: edgeTex, bumpScale: 1.2, metalness: 1, roughness: 0.38 }),
+  new THREE.MeshStandardMaterial({ color: tint, map: faceTex, bumpMap: faceTex, bumpScale: 2.5, metalness: 1, roughness: 0.3 }),
+  new THREE.MeshStandardMaterial({ color: tint, map: faceTex, bumpMap: faceTex, bumpScale: 2.5, metalness: 1, roughness: 0.3 }),
+];
+
+function box(w, h, d, mat, x, y, z, { cast = false, receive = true } = {}) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z); m.castShadow = cast; m.receiveShadow = receive;
+  scene.add(m); return m;
+}
+
+// ---------- static scene ----------
+const tableLen = TABLE_FRONT - TABLE_BACK, tableMidZ = (TABLE_FRONT + TABLE_BACK) / 2;
+box(TABLE_W * 2, 1, tableLen, tableSide, 0, -0.5, tableMidZ);
+const field = new THREE.Mesh(new THREE.PlaneGeometry(TABLE_W * 2, tableLen), steelDark);
+field.rotation.x = -Math.PI / 2; field.position.set(0, 0.002, tableMidZ); field.receiveShadow = true;
+scene.add(field);
+box(TABLE_W * 2, 0.1, 0.06, amberGlow, 0, -0.12, TABLE_FRONT + 0.03);           // payout edge light
+// payout chute surround: won medals drop through into the dark
+box(TABLE_W * 2 + 0.6, 1.5, 0.3, tableSide, 0, TRAY_Y + 0.6, TABLE_FRONT - 0.45 + TRAY_D, { cast: true });
+box(TABLE_W * 2 + 0.6, 0.06, 0.08, amberGlow, 0, TRAY_Y + 1.38, TABLE_FRONT - 0.3 + TRAY_D);
+for (const s of [-1, 1]) box(0.3, 1.5, TRAY_D, tableSide, s * (TABLE_W + 0.45), TRAY_Y + 0.6, TABLE_FRONT - 0.6 + TRAY_D / 2);
+
+const sideLen = SIDE_OPEN_Z - TABLE_BACK, sideMidZ = (SIDE_OPEN_Z + TABLE_BACK) / 2;
+for (const s of [-1, 1]) {
+  box(0.3, 5.5, sideLen, acrylic, s * (TABLE_W + 0.15), 2.5, sideMidZ, { receive: false });
+  box(0.34, 0.14, sideLen, chrome, s * (TABLE_W + 0.15), 5.27, sideMidZ, { cast: true });
+  box(0.12, 0.06, sideLen - 0.3, amberGlow, s * (TABLE_W + 0.15), 5.37, sideMidZ);
+  box(0.34, 5.5, 0.14, chrome, s * (TABLE_W + 0.15), 2.5, SIDE_OPEN_Z - 0.07, { cast: true });
+  box(1.2, 1.2, tableLen, tableSide, s * (TABLE_W + 0.9), -0.6, tableMidZ);  // cabinet shoulders
+}
+
+// drop wall: smoked acrylic with the marquee printed on it
+const drawWall = (g, w, h) => {
+  g.clearRect(0, 0, w, h);
+  g.fillStyle = 'rgba(40,80,110,.35)'; g.fillRect(0, 0, w, h);
+  g.fillStyle = 'rgba(200,230,250,.25)'; g.fillRect(0, 0, w, 6);
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.font = '120px Bungee, "Arial Black", sans-serif';
+  g.lineWidth = 10; g.strokeStyle = 'rgba(80,30,0,.9)'; g.strokeText('MEDAL FALLS', w / 2, h * 0.6);
+  g.fillStyle = '#ffb000'; g.fillText('MEDAL FALLS', w / 2, h * 0.6);
+  g.font = '34px Bungee, "Arial Black", sans-serif'; g.fillStyle = 'rgba(244,236,216,.75)';
+  g.fillText('RING  ▸  SLOT  ▸  SHOWER', w / 2, h * 0.87);
+};
+const wallTex = canvasTex(1024, 384, drawWall);
+const wallH = 5.3 - (PUSH_H + 0.04);
+let wallMesh; // built after fonts are ready
+function buildWall() {
+  wallMesh = new THREE.Mesh(new THREE.PlaneGeometry(TABLE_W * 2, wallH),
+    new THREE.MeshBasicMaterial({ map: wallTex, transparent: true, depthWrite: false }));
+  wallMesh.position.set(0, PUSH_H + 0.04 + wallH / 2, WALL_Z + 0.16);
+  scene.add(wallMesh);
+  box(TABLE_W * 2, 0.14, 0.34, chrome, 0, 5.3, WALL_Z, { cast: true });
+}
+
+// backdrop: bulb board
+const backTex = canvasTex(1024, 512, (g, w, h) => {
+  const lg = g.createLinearGradient(0, 0, 0, h); lg.addColorStop(0, '#0e2436'); lg.addColorStop(1, '#0b1620');
+  g.fillStyle = lg; g.fillRect(0, 0, w, h);
+  for (let y = 24; y < h; y += 40) for (let x = 24 + ((y / 40) % 2) * 20; x < w; x += 40) {
+    const lit = Math.random() < 0.35;
+    g.fillStyle = lit ? 'rgba(255,176,0,.85)' : 'rgba(255,176,0,.12)';
+    g.beginPath(); g.arc(x, y, lit ? 5 : 4, 0, 7); g.fill();
+  }
+});
+const back = new THREE.Mesh(new THREE.PlaneGeometry(30, 15), new THREE.MeshBasicMaterial({ map: backTex, fog: true }));
+back.position.set(0, 6, -9.5);
+scene.add(back);
+
+// pusher
+const pusherGroup = new THREE.Group();
+const pusherMesh = new THREE.Mesh(new THREE.BoxGeometry((TABLE_W - 0.02) * 2, PUSH_H, PUSH_HALF_D * 2), chrome);
+pusherMesh.castShadow = true; pusherMesh.receiveShadow = true;
+pusherGroup.add(pusherMesh);
+const strip = new THREE.Mesh(new THREE.BoxGeometry((TABLE_W - 0.3) * 2, 0.16, 0.04), amberGlow);
+strip.position.set(0, -0.15, PUSH_HALF_D + 0.02);
+pusherGroup.add(strip);
+scene.add(pusherGroup);
+
+// dropper + gate
+const dropper = new THREE.Group();
+const chute = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 0.6), chrome);
+chute.castShadow = true;
+dropper.add(chute);
+const slotHole = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.02, 0.22), new THREE.MeshBasicMaterial({ color: 0x05080b }));
+slotHole.position.y = -0.255; dropper.add(slotHole);
+const guide = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, DROP_Y, 8),
+  new THREE.MeshBasicMaterial({ color: 0xffb000, transparent: true, opacity: 0.28, depthWrite: false }));
+guide.position.y = -DROP_Y / 2 - 0.3; dropper.add(guide);
+dropper.position.set(0, DROP_Y + 0.35, DROP_Z);
+scene.add(dropper);
+
+const gate = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.075, 12, 48), redGlow);
+gate.rotation.x = Math.PI / 2;
+gate.position.set(0, GATE_Y, DROP_Z);
+scene.add(gate);
+let gateFlash = 0;
+
+// medals
+const coinGeo = new THREE.CylinderGeometry(COIN_R, COIN_R, COIN_HH * 2, 40, 1);
+function coinMesh(tint) {
+  const m = new THREE.InstancedMesh(coinGeo, coinMats(tint), MAX_COINS);
+  m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; m.count = 0;
+  m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  scene.add(m); return m;
+}
+const silverMesh = coinMesh(0xdfe6ec), goldMesh = coinMesh(0xf0b73c);
+
+// ---------- physics ----------
+let world, pusherBody;
+let simTime = 0, counting = false;
+const coins = [];
+
+function fixedBox(hx, hy, hz, x, y, z, friction = 0.4) {
+  const b = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(x, y, z));
+  world.createCollider(RAPIER.ColliderDesc.cuboid(hx, hy, hz).setFriction(friction), b);
+}
+function buildPhysics() {
+  world = new RAPIER.World({ x: 0, y: -38, z: 0 });
+  world.timestep = STEP;
+  fixedBox(TABLE_W, 0.5, tableLen / 2, 0, -0.5, tableMidZ, 0.45);
+  for (const s of [-1, 1]) fixedBox(0.15, 3, sideLen / 2, s * (TABLE_W + 0.15), 2.5, sideMidZ, 0.2);
+  fixedBox(TABLE_W, 2.2, 0.15, 0, PUSH_H + 0.04 + 2.2, WALL_Z, 0.2);
+  const trayZ = TABLE_FRONT - 0.6 + TRAY_D / 2;
+  fixedBox(TABLE_W + 0.3, 0.75, 0.15, 0, TRAY_Y + 0.6, TABLE_FRONT - 0.45 + TRAY_D, 0.3);
+  fixedBox(TABLE_W + 0.3, 0.6, 0.1, 0, TRAY_Y + 0.6, TABLE_FRONT - 0.5, 0.3); // keeps medals from sliding under the table
+  for (const s of [-1, 1]) fixedBox(0.15, 0.75, TRAY_D / 2, s * (TABLE_W + 0.45), TRAY_Y + 0.6, trayZ, 0.3);
+  pusherBody = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased()
+    .setTranslation(0, PUSH_H / 2 + 0.003, pusherFront(0) - PUSH_HALF_D));
+  world.createCollider(RAPIER.ColliderDesc.cuboid(TABLE_W - 0.02, PUSH_H / 2, PUSH_HALF_D).setFriction(0.55), pusherBody);
+}
+
+function spawnCoin(x, y, z, { gold = false, vy = 0, tilt = 0.08 } = {}) {
+  if (coins.length >= MAX_COINS) return null;
+  const e = new THREE.Euler(rand(-tilt, tilt), rand(0, Math.PI * 2), rand(-tilt, tilt));
+  const q = new THREE.Quaternion().setFromEuler(e);
+  const body = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic()
+    .setTranslation(x, y, z).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w })
+    .setLinvel(0, vy, 0).setLinearDamping(0.4).setAngularDamping(3).setCcdEnabled(true));
+  world.createCollider(RAPIER.ColliderDesc.roundCylinder(COIN_HH - 0.03, COIN_R - 0.03, 0.03)
+    .setFriction(0.4).setRestitution(0).setDensity(gold ? 1.5 : 1), body);
+  const c = { body, gold, dropped: false, checked: false, prevY: y, won: false };
+  coins.push(c);
+  return c;
+}
+
+function scatter(n, xMin, xMax, zMin, zMax, y, goldEvery = 0) {
+  const placed = [];
+  for (let tries = 0; tries < n * 40 && placed.length < n; tries++) {
+    const x = rand(xMin, xMax), z = rand(zMin, zMax);
+    if (placed.every(p => (p[0] - x) ** 2 + (p[1] - z) ** 2 > (COIN_R * 2.05) ** 2)) placed.push([x, z]);
+  }
+  placed.forEach(([x, z], i) => spawnCoin(x, y, z, { gold: goldEvery && i % goldEvery === goldEvery - 1, tilt: 0.02 }));
+}
+
+let showerQueue = [], showerClock = 0;
+function queueShower(n, gold) {
+  const list = [];
+  for (let i = 0; i < n; i++) list.push(false);
+  for (let i = 0; i < gold; i++) list.splice((Math.random() * list.length) | 0, 0, true);
+  showerQueue.push(...list);
+}
+
+function stepSim() {
+  simTime += STEP;
+  const f = pusherFront(simTime);
+  pusherBody.setNextKinematicTranslation({ x: 0, y: PUSH_H / 2 + 0.003, z: f - PUSH_HALF_D });
+  world.step();
+
+  // Medals leaning on each other rock forever as the pile shifts. Slow ones lose half their
+  // tilt spin each step; medals at a drop-off edge are left alone so they still tip over at full speed.
+  const edgeZ = TABLE_FRONT - COIN_R - 0.15, sideX = TABLE_W - COIN_R - 0.15;
+  for (const c of coins) {
+    const b = c.body;
+    if (b.isSleeping()) continue;
+    const t = b.translation(), l = b.linvel();
+    if (l.x * l.x + l.y * l.y + l.z * l.z > 0.16 || t.y < -0.2 || t.z > edgeZ) continue;
+    if (t.z > SIDE_OPEN_Z && Math.abs(t.x) > sideX) continue;
+    if (t.y > PUSH_H && t.z > f - COIN_R - 0.15) continue; // tipping off the pusher step
+    const v = b.angvel();
+    b.setAngvel({ x: v.x * 0.5, y: v.y, z: v.z * 0.5 }, false);
+  }
+
+  const gx = gateXAt(simTime);
+  for (let i = coins.length - 1; i >= 0; i--) {
+    const c = coins[i], t = c.body.translation();
+    if (c.dropped && !c.checked && c.prevY > GATE_Y && t.y <= GATE_Y) {
+      c.checked = true;
+      if (Math.abs(t.x - gx) < (simTime < feverUntil ? 0.9 : 0.52)) onRingHit();
+    }
+    c.prevY = t.y;
+    if (!c.won && t.y < -0.5 && t.z > TABLE_FRONT - 0.4 && Math.abs(t.x) < TABLE_W + 0.6) {
+      c.won = true;
+      if (counting) payout(c.gold, t);
+    }
+    if (t.y < -4) {
+      world.removeRigidBody(c.body);
+      coins[i] = coins[coins.length - 1]; coins.pop();
+    }
+  }
+
+  if (showerQueue.length) {
+    showerClock -= STEP;
+    if (showerClock <= 0) {
+      showerClock = 0.05;
+      const gold = showerQueue.shift();
+      const c = spawnCoin(rand(-4.7, 4.7), 6.8, rand(WALL_Z + 0.8, 1.2), { gold, tilt: 0.5 });
+      if (!c) { bank += gold ? GOLD_VALUE : 1; won += gold ? GOLD_VALUE : 1; } // field full: pay straight to the wallet
+    }
+  }
+}
+
+// ---------- payouts ----------
+const pops = $('pops');
+const tmpV = new THREE.Vector3();
+function payout(gold, t) {
+  const v = gold ? GOLD_VALUE : 1;
+  bank += v; won += v;
+  sfx.win(gold);
+  popAt(t.x, 0.3, TABLE_FRONT, '+' + v, gold);
+}
+function popAt(x, y, z, text, gold) {
+  if (pops.childElementCount > 40) return;
+  tmpV.set(x, y, z).project(camera);
+  const el = document.createElement('span');
+  el.className = 'pop' + (gold ? ' gold' : '');
+  el.textContent = text;
+  el.style.left = ((tmpV.x + 1) / 2 * canvas.clientWidth) + 'px';
+  el.style.top = ((1 - tmpV.y) / 2 * canvas.clientHeight) + 'px';
+  el.addEventListener('animationend', () => el.remove());
+  pops.appendChild(el);
+}
+
+// ---------- slot (drawn onto the drop wall, above the logo) ----------
+const SYMS = ['7', 'BAR', '★', '◆', '♣'];
+const SYM_COLOR = { '7': '#ff4a3d', 'BAR': '#1c2a38', '★': '#d98a00', '◆': '#1f7a8c', '♣': '#2d6b3a' };
+const PAYS = {
+  '7': { coins: 0, gold: 5, label: 'JACKPOT' },     // coins = the progressive pool, filled in at payout
+  'BAR': { coins: 20, gold: 1, label: 'BIG WIN' },
+  '★': { coins: 10, gold: 0, label: 'WIN' },
+  '◆': { coins: 5, gold: 0, label: 'WIN' },
+};
+const ODDS = [['7', 0.04], ['BAR', 0.08], ['★', 0.12], ['◆', 0.16]];
+const banner = $('banner');
+let spinning = false;
+const FEVER_SECS = 12;               // after any slot win the ring grows and is easier to hit
+let feverUntil = 0;
+const slot = {
+  sym: ['7', '7', '7'], next: ['7', '7', '7'], spin: [false, false, false], land: [0, 0, 0],
+  tick: 0, reach: false, winUntil: 0, stock: 0, msg: 'HIT THE RING', hot: false, dirty: true,
+};
+const SLOT_W = 6.4, SLOT_H = 1.6;
+const slotCanvas = document.createElement('canvas');
+slotCanvas.width = 1024; slotCanvas.height = 256;
+const sg = slotCanvas.getContext('2d');
+const slotTex = new THREE.CanvasTexture(slotCanvas);
+slotTex.colorSpace = THREE.SRGBColorSpace; slotTex.anisotropy = 8;
+const slotPanel = new THREE.Mesh(new THREE.PlaneGeometry(SLOT_W, SLOT_H), new THREE.MeshBasicMaterial({ map: slotTex, toneMapped: false }));
+slotPanel.position.set(0, 5.2 - SLOT_H / 2, WALL_Z + 0.18);
+scene.add(slotPanel);
+
+function rr(x, y, w, h, r) { sg.beginPath(); sg.roundRect(x, y, w, h, r); }
+function drawSym(s, cx, cy, alpha) {
+  sg.globalAlpha = alpha; sg.fillStyle = SYM_COLOR[s];
+  sg.font = (s === 'BAR' ? '72px' : '132px') + ' Bungee, "Arial Black", sans-serif';
+  sg.fillText(s, cx, cy + (s === 'BAR' ? 4 : 10));
+  sg.globalAlpha = 1;
+}
+function drawSlot(now) {
+  const W = 1024, H = 256, g = sg;
+  g.clearRect(0, 0, W, H);
+  const flash = now < slot.winUntil && Math.floor(now / 220) % 2 === 0;
+  rr(4, 4, W - 8, H - 8, 20); g.fillStyle = flash ? '#ffb000' : '#c8d2da'; g.fill();
+  rr(13, 13, W - 26, H - 26, 13);
+  const bg = g.createLinearGradient(0, 13, 0, H - 13); bg.addColorStop(0, '#16304a'); bg.addColorStop(1, '#0c1b28');
+  g.fillStyle = bg; g.fill();
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+
+  const rw = 170, rh = 196, gap = 14, x0 = (W - (rw * 3 + gap * 2)) / 2, y0 = 30;
+  for (let i = 0; i < 3; i++) {
+    const x = x0 + i * (rw + gap), cx = x + rw / 2, cy = y0 + rh / 2;
+    g.save(); rr(x, y0, rw, rh, 9); g.clip();
+    const rg = g.createLinearGradient(0, y0, 0, y0 + rh);
+    rg.addColorStop(0, '#b3ab97'); rg.addColorStop(.3, '#f4ecd8'); rg.addColorStop(.7, '#f4ecd8'); rg.addColorStop(1, '#b3ab97');
+    g.fillStyle = rg; g.fillRect(x, y0, rw, rh);
+    if (slot.spin[i]) {
+      const p = Math.min(1, (now - slot.tick) / 60);
+      drawSym(slot.next[i], cx, cy + (p - 1) * rh, 0.75);
+      drawSym(slot.sym[i], cx, cy + p * rh, 0.75);
+    } else {
+      const t = (now - slot.land[i]) / 240;
+      drawSym(slot.sym[i], cx, cy + (t < 1 ? -18 * (1 - t) * Math.cos(t * Math.PI * 1.5) : 0), 1);
+    }
+    g.restore();
+    if (i === 2 && slot.reach) { g.lineWidth = 8; g.strokeStyle = '#ff4a3d'; rr(x - 3, y0 - 3, rw + 6, rh + 6, 11); g.stroke(); }
+  }
+
+  // progressive jackpot, then queued spins
+  g.font = '600 20px "Chivo Mono", monospace'; g.fillStyle = '#7f93a3';
+  g.fillText('JACKPOT', 128, 48);
+  g.font = (prog.jackpot >= 10000 ? '36px' : '46px') + ' Bungee, "Arial Black", sans-serif';
+  g.fillStyle = '#ff4a3d'; g.shadowColor = '#ff4a3d'; g.shadowBlur = 16;
+  g.fillText(prog.jackpot.toLocaleString(), 128, 94);
+  g.shadowBlur = 0;
+  g.font = '600 20px "Chivo Mono", monospace'; g.fillStyle = '#7f93a3';
+  g.fillText('STOCK', 128, 148);
+  [68, 108, 148, 188].forEach((lx, i) => {
+    const ly = 196, on = i < slot.stock;
+    g.beginPath(); g.arc(lx, ly, 14, 0, Math.PI * 2);
+    g.shadowColor = '#ffb000'; g.shadowBlur = on ? 22 : 0;
+    g.fillStyle = on ? '#ffb000' : '#213447'; g.fill();
+    g.shadowBlur = 0; g.lineWidth = 3; g.strokeStyle = on ? '#ffd680' : '#3a5268'; g.stroke();
+  });
+
+  // message, wrapped to the right-hand block
+  g.font = '34px Bungee, "Arial Black", sans-serif'; g.fillStyle = slot.hot ? '#ffb000' : '#c8d2da';
+  const lines = [];
+  for (const word of slot.msg.split(' ')) {
+    const cur = lines[lines.length - 1];
+    if (cur && g.measureText(cur + ' ' + word).width < 190) lines[lines.length - 1] = cur + ' ' + word; else lines.push(word);
+  }
+  lines.forEach((l, i) => g.fillText(l, 905, H / 2 + (i - (lines.length - 1) / 2) * 42));
+}
+function updateSlot(now) {
+  const animating = slot.spin.some(Boolean) || now < slot.winUntil + 250 || slot.land.some(t => now - t < 300);
+  if (!slot.dirty && !animating && slot.jp === prog.jackpot) return;
+  drawSlot(now); slotTex.needsUpdate = true; slot.dirty = false; slot.jp = prog.jackpot;
+}
+function setMsg(t, hot = false) { slot.msg = t; slot.hot = hot; slot.dirty = true; }
+
+function onRingHit() {
+  gateFlash = 1;
+  sfx.check();
+  if (slot.stock < 4) slot.stock++;
+  slot.dirty = true;
+  if (!spinning) nextSpin();
+}
+function nextSpin() {
+  if (spinning || slot.stock <= 0) return;
+  slot.stock--; slot.dirty = true; spin();
+}
+function spin() {
+  spinning = true;
+  slot.winUntil = 0; slot.reach = false;
+  let r = Math.random(), outcome = null;
+  for (const [s, p] of ODDS) { if (r < p) { outcome = s; break; } r -= p; }
+  let final;
+  if (outcome) final = [outcome, outcome, outcome];
+  else {
+    const a = pick(SYMS);
+    if (Math.random() < 0.5) { let c; do c = pick(SYMS); while (c === a); final = [a, a, c]; } // frequent near misses
+    else { let b; do b = pick(SYMS); while (b === a); final = [a, b, pick(SYMS)]; }
+  }
+  const reach = final[0] === final[1];
+  const stops = [700, 1150, reach ? 3300 : 1600];
+  setMsg('SPINNING');
+  const start = performance.now();
+  slot.spin = [true, true, true];
+  slot.tick = start;
+  const timer = setInterval(() => {
+    const now = performance.now(), el = now - start;
+    slot.tick = now;
+    for (let i = 0; i < 3; i++) {
+      if (!slot.spin[i]) continue;
+      if (el >= stops[i]) {
+        slot.spin[i] = false; slot.sym[i] = final[i]; slot.land[i] = now; sfx.stop();
+        if (i === 1 && reach) { slot.reach = true; setMsg('REACH!', true); sfx.reach(); }
+      } else { slot.sym[i] = slot.next[i]; slot.next[i] = pick(SYMS); }
+    }
+    if (slot.spin[2]) sfx.tick();
+    if (!slot.spin.some(Boolean)) { clearInterval(timer); resolve(final, reach); }
+  }, 60);
+}
+function resolve(final, reach) {
+  slot.reach = false; slot.dirty = true;
+  const pays = final[0] === final[1] && final[1] === final[2] && PAYS[final[0]];
+  const hit = pays && { ...pays };
+  if (hit) {
+    const jp = final[0] === '7';
+    if (jp) {
+      // the pool rains onto the field; anything past 60 medals goes straight to the wallet
+      hit.coins = prog.jackpot;
+      const extra = Math.max(0, prog.jackpot - 60);
+      bank += extra; won += extra;
+      queueShower(prog.jackpot - extra, hit.gold);
+      prog.jackpot = JACKPOT_SEED;
+    } else queueShower(hit.coins, hit.gold);
+    slot.winUntil = performance.now() + 2000;
+    feverUntil = simTime + FEVER_SECS;
+    setMsg(`${hit.label} +${hit.coins}`, true);
+    sfx.pay(jp || final[0] === 'BAR');
+    showBanner(hit.label, `+${hit.coins} medals${hit.gold ? ` · ${hit.gold} gold` : ''} · fever!`, jp);
+  } else {
+    setMsg(reach ? 'SO CLOSE' : 'MISS');
+    sfx.miss();
+  }
+  setTimeout(() => { spinning = false; if (slot.stock > 0) nextSpin(); else if (!hit) setMsg('HIT THE RING'); }, hit ? 1400 : 700);
+}
+function showBanner(big, sub, jp) {
+  banner.innerHTML = `<div class="big${jp ? ' jp' : ''}">${big}</div><div class="sub">${sub}</div>`;
+  banner.classList.remove('show'); void banner.offsetWidth; banner.classList.add('show');
+}
+
+// ---------- progression: levels, free trickle, daily streak ----------
+const xpNeed = lv => 20 + lv * 10;
+function addXp(n) {
+  prog.xp += n;
+  while (prog.xp >= xpNeed(prog.level)) {
+    prog.xp -= xpNeed(prog.level);
+    prog.level++;
+    const reward = 10 + prog.level * 5;
+    bank += reward;
+    slot.stock = Math.min(4, slot.stock + 1); slot.dirty = true;   // a free spin with every level
+    showBanner(`LEVEL ${prog.level}`, `+${reward} medals · free spin`, false);
+    sfx.pay(false);
+    if (!spinning) nextSpin();
+  }
+  renderLevel();
+}
+function renderLevel() {
+  $('lvl').textContent = prog.level;
+  $('xpfill').style.width = (prog.xp / xpNeed(prog.level) * 100) + '%';
+}
+function tickRegen() {
+  const now = Date.now();
+  if (bank >= FREE_CAP) { prog.regenAt = now; $('regen').textContent = ''; return; }
+  const n = Math.floor((now - prog.regenAt) / FREE_EVERY);
+  if (n > 0) { bank = Math.min(FREE_CAP, bank + n); prog.regenAt += n * FREE_EVERY; }
+  const left = Math.ceil((FREE_EVERY - (now - prog.regenAt)) / 1000);
+  $('regen').textContent = bank < FREE_CAP ? `Free +1 in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : '';
+}
+const dayKey = d => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; // local calendar day
+function checkDaily() {
+  const today = dayKey(new Date());
+  if (prog.lastDaily === today) return;
+  const y = new Date(); y.setDate(y.getDate() - 1);
+  const day = prog.lastDaily === dayKey(y) ? prog.streak % 7 + 1 : 1;
+  const tiles = DAILY.map((m, i) =>
+    `<div class="day${i + 1 < day ? ' done' : ''}${i + 1 === day ? ' now' : ''}">Day ${i + 1}<b>${m}</b></div>`).join('');
+  openModal(`
+    <h2>Day ${day} bonus</h2>
+    <p>Come back every day to keep the streak. Miss a day and it starts over at day 1.</p>
+    <div class="days">${tiles}</div>
+    <div class="actions"><button type="button" class="buy" id="claim">Claim +${DAILY[day - 1]}</button></div>`);
+  $('claim').addEventListener('click', () => {
+    prog.streak = day; prog.lastDaily = today;
+    bank += DAILY[day - 1]; save();
+    closeModal(); sfx.pay(day === 7);
+    showBanner(`+${DAILY[day - 1]}`, `day ${day} streak`, false);
+  });
+}
+
+// ---------- medal shop (demo: nothing is charged) ----------
+const PACKS = [
+  { m: 100, price: 0.99 },
+  { m: 550, price: 4.99, tag: 'Most popular' },
+  { m: 1200, price: 9.99, tag: '+20% bonus' },
+  { m: 3000, price: 19.99, tag: 'Best value · +50%' },
+];
+const STARTER = { m: 500, price: 1.99, was: 9.99 };
+let shopTimer = 0;
+function openModal(html) {
+  const m = $('modal');
+  m.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">${html}</div>`;
+  m.hidden = false; holding = false;
+}
+function closeModal() { $('modal').hidden = true; clearInterval(shopTimer); }
+$('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
+addEventListener('keydown', e => { if (e.key === 'Escape' && !$('modal').hidden) closeModal(); });
+
+function openShop(broke) {
+  if (!$('modal').hidden) return;
+  if (broke && !prog.starterBought && !prog.offerEnds) prog.offerEnds = Date.now() + 15 * 60000; // one-time 15 minute offer
+  const offerLive = !prog.starterBought && prog.offerEnds > Date.now();
+  const offer = offerLive ? `
+    <div class="pack offer"><span class="tag">Starter pack · one time</span>
+      <span class="m">${STARTER.m} medals</span><span class="was">$${STARTER.was}</span>
+      <button type="button" class="buy" data-starter>$${STARTER.price}</button>
+      <span class="timer" id="offerTimer"></span></div>` : '';
+  const packs = PACKS.map((p, i) => `
+    <div class="pack">${p.tag ? `<span class="tag">${p.tag}</span>` : ''}
+      <span class="m">${p.m.toLocaleString()}</span><button type="button" class="buy" data-pack="${i}">$${p.price}</button></div>`).join('');
+  openModal(`
+    <h2>${broke ? 'Out of medals' : 'Medal shop'}</h2>
+    ${broke ? `<p>Grab a pack to keep pushing, or wait for free medals: one a minute, up to ${FREE_CAP}.</p>` : ''}
+    <div class="packs">${offer}${packs}</div>
+    <p class="note">Demo store. No payment is taken; buying just adds the medals. Demo spend so far: $${prog.spent.toFixed(2)}</p>
+    <div class="actions"><button type="button" id="closeShop">${broke ? 'Wait for free medals' : 'Close'}</button></div>`);
+  $('closeShop').addEventListener('click', closeModal);
+  $('modal').querySelectorAll('[data-pack]').forEach(b => b.addEventListener('click', () => buy(PACKS[+b.dataset.pack])));
+  const sb = $('modal').querySelector('[data-starter]');
+  if (sb) sb.addEventListener('click', () => { prog.starterBought = true; buy(STARTER); });
+  const tickOffer = () => {
+    const el = $('offerTimer'); if (!el) return;
+    const s = Math.max(0, Math.ceil((prog.offerEnds - Date.now()) / 1000));
+    el.textContent = `Ends in ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  };
+  tickOffer(); shopTimer = setInterval(tickOffer, 1000);
+}
+function buy(p) {
+  bank += p.m; prog.spent += p.price; save();
+  closeModal(); sfx.pay(true);
+  showBanner(`+${p.m.toLocaleString()}`, 'medals added', false);
+}
+
+// ---------- input ----------
+let aimX = 0, holding = false, holdStart = 0, lastDrop = 0;
+const HOLD_REPEAT_MS = 350;          // a press must last this long before it starts auto-dropping
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), hit = new THREE.Vector3();
+const aimPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -DROP_Z);
+function aimFrom(e) {
+  const r = canvas.getBoundingClientRect();
+  ndc.set((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  if (ray.ray.intersectPlane(aimPlane, hit)) aimX = clamp(hit.x, -4.8, 4.8);
+}
+function tryDrop() {
+  const now = performance.now();
+  if (!world || now - lastDrop < 170) return;
+  if (!$('modal').hidden) return;
+  if (bank <= 0) { holding = false; openShop(true); return; }
+  if (coins.length >= MAX_COINS) return;
+  lastDrop = now;
+  bank--;
+  prog.jackpot++;                                    // every medal dropped feeds the jackpot
+  const lucky = Math.random() < 0.04;                // 1 in 25 drops turns gold
+  const c = spawnCoin(dropper.position.x + rand(-0.04, 0.04), DROP_Y, DROP_Z + rand(-0.04, 0.04), { vy: -3, tilt: 0.1, gold: lucky });
+  c.dropped = true;
+  sfx.drop();
+  if (lucky) { sfx.check(); popAt(dropper.position.x, DROP_Y, DROP_Z, 'LUCKY!', true); }
+  addXp(1);
+}
+canvas.addEventListener('pointerdown', e => {
+  wakeAudio(); aimFrom(e); holding = true; holdStart = performance.now();
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+  dropper.position.x = aimX; tryDrop();
+});
+canvas.addEventListener('pointermove', aimFrom);
+for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(ev, () => { holding = false; });
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'BUTTON' || !$('modal').hidden) return;
+  if (e.key === 'ArrowLeft') { aimX = clamp(aimX - 0.35, -4.8, 4.8); e.preventDefault(); }
+  if (e.key === 'ArrowRight') { aimX = clamp(aimX + 0.35, -4.8, 4.8); e.preventDefault(); }
+  if (e.key === ' ' || e.key === 'Enter') { wakeAudio(); tryDrop(); e.preventDefault(); }
+});
+$('mute').addEventListener('click', e => {
+  wakeAudio(); muted = !muted;
+  e.currentTarget.textContent = muted ? 'Sound off' : 'Sound on';
+  e.currentTarget.setAttribute('aria-pressed', String(muted));
+});
+$('shopBtn').addEventListener('click', () => { wakeAudio(); openShop(false); });
+
+// ---------- loop ----------
+const bankEl = $('bank'), wonEl = $('won'), feverEl = $('fever');
+let shownBank = -1, shownWon = -1;
+const M = new THREE.Matrix4(), P = new THREE.Vector3(), Q = new THREE.Quaternion(), S = new THREE.Vector3(1, 1, 1);
+let acc = 0, last = performance.now();
+
+function render() {
+  let si = 0, gi = 0;
+  for (const c of coins) {
+    const t = c.body.translation(), r = c.body.rotation();
+    P.set(t.x, t.y, t.z); Q.set(r.x, r.y, r.z, r.w); M.compose(P, Q, S);
+    if (c.gold) goldMesh.setMatrixAt(gi++, M); else silverMesh.setMatrixAt(si++, M);
+  }
+  silverMesh.count = si; goldMesh.count = gi;
+  silverMesh.instanceMatrix.needsUpdate = true; goldMesh.instanceMatrix.needsUpdate = true;
+
+  pusherGroup.position.set(0, PUSH_H / 2 + 0.003, pusherFront(simTime) - PUSH_HALF_D);
+  dropper.position.x += (aimX - dropper.position.x) * 0.35;
+  gate.position.x = gateXAt(simTime);
+  gateFlash = Math.max(0, gateFlash - 0.03);
+  const fever = simTime < feverUntil;
+  redGlow.emissive.setRGB(1, (fever ? 0.55 : 0.16) + gateFlash * 0.4, 0.1);
+  redGlow.emissiveIntensity = 1.4 + gateFlash * 3;
+  gate.scale.setScalar((fever ? 1.7 : 1) + gateFlash * 0.35);
+  if (feverEl.hidden === fever) feverEl.hidden = !fever;
+
+  if (bank !== shownBank) bankEl.textContent = shownBank = bank;
+  if (won !== shownWon) wonEl.textContent = shownWon = won;
+  updateSlot(performance.now());
+  renderer.render(scene, camera);
+}
+function frame(now) {
+  acc += Math.min(0.05, (now - last) / 1000); last = now;
+  let n = 0;
+  while (acc >= STEP && n < 5) { stepSim(); acc -= STEP; n++; }
+  if (n === 5) acc = 0;
+  if (holding && now - holdStart > HOLD_REPEAT_MS) tryDrop();
+  render();
+  requestAnimationFrame(frame);
+}
+
+// ---------- boot ----------
+async function boot() {
+  resize();
+  try { await Promise.all([document.fonts.load('120px Bungee'), document.fonts.load('600 22px "Chivo Mono"')]); } catch (e) {}
+  slot.dirty = true;
+  drawWall(wallTex.image.getContext('2d'), 1024, 384); // redraw now that the face is ready
+  wallTex.needsUpdate = true;
+  buildWall();
+
+  await RAPIER.init();
+  $('loadmsg').textContent = 'Settling the table';
+  buildPhysics();
+  const f0 = pusherFront(0);
+  scatter(34, -4.9, 4.9, f0 + 0.7, TABLE_FRONT - 0.7, 0.1, 17);
+  scatter(24, -4.7, 4.7, f0 + 1.0, TABLE_FRONT - 1.0, 0.32);
+  scatter(12, -4.4, 4.4, 1.0, TABLE_FRONT - 1.3, 0.54);
+  scatter(22, -4.9, 4.9, WALL_Z + 0.75, f0 - 0.7, PUSH_H + 0.12);
+  await new Promise(r => setTimeout(r, 0));
+  for (let i = 0; i < 420; i++) stepSim();
+  counting = true;
+  resize();
+  $('loading').remove();
+  renderLevel();
+  tickRegen(); setInterval(tickRegen, 1000);
+  checkDaily();
+  last = performance.now();
+  requestAnimationFrame(frame);
+}
+boot().catch(err => {
+  console.error(err);
+  $('loadmsg').textContent = 'The physics engine could not start: ' + (err && err.message || err);
+});
+</script>
+</body>
+</html>
