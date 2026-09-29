@@ -44,6 +44,12 @@
   button.plus { width: 30px; height: 30px; padding: 0; border-radius: 50%; font-family: var(--display); font-size: 18px; line-height: 1;
                 letter-spacing: 0; color: #1a1204; background: var(--amber); border-color: #ffd680; box-shadow: 0 0 12px rgba(255,176,0,.5); }
   button.plus:hover { background: #ffc740; }
+  button.collect { font-family: var(--display); font-size: 15px; font-weight: 400; letter-spacing: .04em; padding: 8px 14px;
+                   color: #1a1204; background: var(--amber); border-color: #ffd680; box-shadow: 0 0 16px rgba(255,176,0,.55);
+                   font-variant-numeric: tabular-nums; }
+  button.collect:hover { background: #ffc740; }
+  button.collect.nudge { animation: nudge .5s ease-in-out 3; }
+  @keyframes nudge { 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } 50% { box-shadow: 0 0 30px rgba(255,176,0,.9); } }
   .regen { font-size: 10px; letter-spacing: .08em; color: var(--dim); min-height: 12px; }
   .fever { font-family: var(--display); font-size: 12px; color: var(--amber); animation: blink .5s steps(2) infinite; }
   @keyframes blink { 50% { opacity: .35; } }
@@ -140,6 +146,7 @@
     <div class="meter bank">
       <span class="lbl">Medals</span>
       <div class="row"><span class="num" id="bank">100</span><button type="button" class="plus" id="shopBtn" aria-label="Get more medals">+</button></div>
+      <button type="button" class="collect" id="collect" hidden>Collect +0</button>
       <span class="regen" id="regen"></span>
       <span class="fever" id="fever" hidden>Fever · big ring</span>
     </div>
@@ -216,14 +223,19 @@ const SAVE_KEY = 'medalfalls.v1';
 const JACKPOT_SEED = 30, JACKPOT_PER_DROP = 1 / 50;  // pool grows one medal per 50 dropped
 const FREE_CAP = 30, FREE_EVERY = 60000;          // free medals trickle back up to 30, one a minute
 const DAILY = [20, 30, 40, 60, 80, 100, 200];      // login streak rewards, day 1-7
-let bank = 100, won = 0;
+// bank = spendable medals; tray = winnings waiting for the player to press Collect
+let bank = 100, won = 0, tray = 0;
 const prog = { level: 1, xp: 0, jackpot: JACKPOT_SEED, streak: 0, lastDaily: '', regenAt: Date.now(), offerEnds: 0, starterBought: false, spent: 0 };
 try {
   const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
-  if (s) { bank = s.bank | 0; won = s.won | 0; Object.assign(prog, s.prog || {}); }
+  if (s) { bank = s.bank | 0; won = s.won | 0; tray = s.tray | 0; Object.assign(prog, s.prog || {}); }
+  else {
+    // brand new game: exactly 100 medals, so the daily streak starts tomorrow rather than topping up today
+    const d = new Date(); prog.lastDaily = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  }
 } catch (e) {}
 let resetting = false;   // once a reset starts, nothing may write the old state back
-function save() { if (resetting) return; try { localStorage.setItem(SAVE_KEY, JSON.stringify({ bank, won, prog })); } catch (e) {} }
+function save() { if (resetting) return; try { localStorage.setItem(SAVE_KEY, JSON.stringify({ bank, won, tray, prog })); } catch (e) {} }
 // The table is saved too, so medals already dropped survive a refresh.
 const FIELD_KEY = 'medalfalls.field.v1';
 const KIND_CODE = { coin: 'c', gold: 'g', stack: 's', ball: 'b' };
@@ -645,11 +657,11 @@ function queueShower(n, gold, prizes = []) {
   for (const k of [...Array(gold).fill('gold'), ...prizes]) list.splice((Math.random() * list.length) | 0, 0, k);
   showerQueue.push(...list);
 }
-// Anything that cannot land on the field (field full, too many prizes) pays out directly.
+// Anything that cannot land on the field (field full, too many prizes) goes straight to the tray.
 function creditDirect(kind) {
   if (kind === 'ball') { slot.stock = Math.min(4, slot.stock + BALL_SPINS); slot.dirty = true; if (!spinning) nextSpin(); return; }
   const v = { coin: 1, gold: GOLD_VALUE, stack: STACK_VALUE }[kind];
-  bank += v; won += v;
+  tray += v; won += v;
 }
 
 function stepSim() {
@@ -722,7 +734,7 @@ function payout(kind, t) {
     return;
   }
   const v = { coin: 1, gold: GOLD_VALUE, stack: STACK_VALUE }[kind];
-  bank += v; won += v;
+  tray += v; won += v;
   if (kind === 'stack') { sfx.pay(false); showBanner(`+${STACK_VALUE}`, 'medal stack', false); }
   else sfx.win(kind === 'gold');
   popAt(t.x, 0.3, TABLE_FRONT, '+' + v, kind !== 'coin');
@@ -893,7 +905,7 @@ function resolve(final, reach) {
       const pool = Math.floor(prog.jackpot);
       hit.coins = pool;
       const extra = Math.max(0, pool - 60);
-      bank += extra; won += extra;
+      tray += extra; won += extra;
       queueShower(pool - extra, hit.gold, hit.prizes);
       prog.jackpot = JACKPOT_SEED;
     } else queueShower(hit.coins, hit.gold, hit.prizes);
@@ -1032,7 +1044,11 @@ function tryDrop() {
   const now = performance.now();
   if (!world || now - lastDrop < 170) return;
   if (!$('modal').hidden) return;
-  if (bank <= 0) { holding = false; openShop(true); return; }
+  if (bank <= 0) {
+    holding = false;
+    if (tray > 0) { nudgeCollect(); return; }   // winnings are waiting; point at them before the shop
+    openShop(true); return;
+  }
   if (coins.length >= MAX_COINS) return;
   lastDrop = now;
   bank--;
@@ -1061,7 +1077,7 @@ $('menuBtn').addEventListener('click', () => openMenu());
 function openMenu() {
   openModal(`
     <h2>Menu</h2>
-    <p>Level ${prog.level} · ${bank.toLocaleString()} medals · ${won.toLocaleString()} paid out · jackpot ${Math.floor(prog.jackpot)}</p>
+    <p>Level ${prog.level} · ${bank.toLocaleString()} medals${tray ? ` (+${tray.toLocaleString()} to collect)` : ''} · ${won.toLocaleString()} paid out · jackpot ${Math.floor(prog.jackpot)}</p>
     <div class="actions"><button type="button" id="resetAsk">Reset game</button><button type="button" class="buy" id="menuClose">Back to game</button></div>`);
   $('menuClose').addEventListener('click', closeModal);
   $('resetAsk').addEventListener('click', () => {
@@ -1086,7 +1102,21 @@ $('shopBtn').addEventListener('click', () => { wakeAudio(); openShop(false); });
 
 // ---------- loop ----------
 const bankEl = $('bank'), wonEl = $('won'), feverEl = $('fever');
-let shownBank = -1, shownWon = -1;
+let shownBank = -1, shownWon = -1, shownTray = -1;
+const collectBtn = $('collect');
+function collect() {
+  if (tray <= 0) return;
+  wakeAudio();
+  const n = tray;
+  bank += n; tray = 0; save();
+  sfx.pay(n >= 50);
+  collectBtn.classList.remove('nudge');
+  showBanner(`+${n.toLocaleString()}`, 'collected', false);
+}
+function nudgeCollect() {
+  collectBtn.classList.remove('nudge'); void collectBtn.offsetWidth; collectBtn.classList.add('nudge');
+}
+collectBtn.addEventListener('click', collect);
 const M = new THREE.Matrix4(), P = new THREE.Vector3(), Q = new THREE.Quaternion(), S = new THREE.Vector3(1, 1, 1);
 let acc = 0, last = performance.now();
 
@@ -1113,6 +1143,11 @@ function render() {
 
   if (bank !== shownBank) bankEl.textContent = shownBank = bank;
   if (won !== shownWon) wonEl.textContent = shownWon = won;
+  if (tray !== shownTray) {
+    shownTray = tray;
+    collectBtn.hidden = tray <= 0;
+    collectBtn.textContent = `Collect +${tray.toLocaleString()}`;
+  }
   updateSlot(performance.now());
   renderer.render(scene, camera);
 }
