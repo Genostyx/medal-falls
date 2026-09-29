@@ -315,8 +315,9 @@ function save() { if (resetting) return; try { localStorage.setItem(SAVE_KEY, JS
 const FIELD_KEY = 'medalfalls.field.v1';
 const KIND_CODE = { coin: 'c', gold: 'g', stack: 's', ball: 'b' };
 const CODE_KIND = { c: 'coin', g: 'gold', s: 'stack', b: 'ball' };
+let tableBuilt = false;   // set once the physics table exists; before that (or if startup failed) there's nothing to save
 function saveField() {
-  if (resetting || !world || !counting) return;
+  if (resetting || !tableBuilt || !counting) return;
   const r3 = v => Math.round(v * 1000) / 1000;
   const list = [];
   for (const c of coins) {
@@ -384,7 +385,15 @@ canvas.addEventListener('webglcontextlost', () => window.reportError?.('WebGL co
 // Phones get lighter settings from the first frame: high-DPI screens don't need MSAA, and mobile
 // browsers (iOS Safari especially) can drop the whole 3D view under heavy GPU memory use.
 const touchDevice = matchMedia('(pointer: coarse)').matches || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: !touchDevice && !LITE, powerPreference: 'high-performance' });
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: !touchDevice && !LITE, powerPreference: 'high-performance' });
+} catch (e) {
+  // Browsers turn 3D off for a site after its graphics crash a few times, until the browser restarts.
+  $('loading').querySelector('.t').textContent = '3D graphics are blocked';
+  $('loadmsg').textContent = 'Your browser has switched off 3D for this page, usually after an earlier graphics crash. Fully close the browser (swipe it away in the app switcher), reopen it, and load the game again.';
+  throw e;
+}
 renderer.setPixelRatio(LITE ? 1 : Math.min(devicePixelRatio, touchDevice ? 1.5 : 2));
 crumb('3D view created');
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -1312,6 +1321,7 @@ async function boot() {
     for (let i = 0; i < 420; i++) stepSim();
   }
   counting = true;
+  tableBuilt = true;
   crumb('table ready', { coins: coins.length });
   if (slot.stock > 0 && !spinning) nextSpin();
   resize();
