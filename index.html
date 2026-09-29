@@ -102,6 +102,17 @@
   button.refill { color: #1a1204; background: var(--amber); border-color: #ffd680; }
 
   #pops { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  /* the big arcade button: bottom centre, clear of the footer text and buttons */
+  #dropBtn { position: absolute; left: 50%; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+             width: 84px; height: 84px; padding: 0; border-radius: 50%; z-index: 2;
+             font-family: var(--display); font-size: 17px; font-weight: 400; letter-spacing: .04em; color: #fff;
+             background: radial-gradient(circle at 50% 35%, #ff7a52, #e2401f 60%, #9c2410);
+             border: 4px solid #f4ecd8; box-shadow: 0 6px 0 #6e1a0b, 0 10px 22px rgba(0,0,0,.55), 0 0 22px rgba(255,90,40,.45);
+             touch-action: manipulation; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  #dropBtn:hover { background: radial-gradient(circle at 50% 35%, #ff8d69, #ec4a28 60%, #a4280f); }
+  #dropBtn:active { transform: translate(-50%, 5px); box-shadow: 0 1px 0 #6e1a0b, 0 4px 10px rgba(0,0,0,.5), 0 0 26px rgba(255,90,40,.6); }
+  @media (max-width: 640px) { #dropBtn { width: 76px; height: 76px; bottom: calc(126px + env(safe-area-inset-bottom, 0px)); } }
+  @media (max-height: 520px) { #dropBtn { width: 68px; height: 68px; font-size: 15px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); } }
   .pop { position: absolute; font-family: var(--display); font-size: 18px; color: var(--amber); text-shadow: 0 0 8px rgba(255,176,0,.6), 0 2px 2px #000;
          transform: translate(-50%, -50%); animation: rise .9s ease-out forwards; }
   .pop.gold { font-size: 26px; color: #ffe08a; }
@@ -199,7 +210,7 @@
 
   <footer class="foot">
     <div class="hints">
-      <p class="hint">Move or tap to aim · press or hold to drop · drop through the <b>red ring</b> to spin · gold medals pay 5</p>
+      <p class="hint">Move or drag to aim · press or hold DROP to release · drop through the <b>red ring</b> to spin · gold medals pay 5</p>
       <p class="paytable"><b>777</b> the whole jackpot + 2 bonus balls · <b>BAR</b> 6 + medal stack · <b>★</b> 3 · <b>◆</b> 1 · <b>ball</b> 3 free spins · <b>stack</b> 25</p>
     </div>
     <div class="btns">
@@ -208,6 +219,7 @@
     </div>
   </footer>
 
+  <button type="button" id="dropBtn" aria-label="Drop a medal (hold to keep dropping)">Drop</button>
   <div id="pops"></div>
   <div id="banner"></div>
   <div id="modal" hidden></div>
@@ -1101,13 +1113,26 @@ function tryDrop() {
   if (lucky) { sfx.check(); popAt(dropper.position.x, DROP_Y, DROP_Z, 'LUCKY!', true); }
   addXp(1);
 }
+// Touching the table only aims (drag to slide the dropper), so a stray tap never spends a medal;
+// the DROP button releases. A mouse click on the table still drops too.
 canvas.addEventListener('pointerdown', e => {
-  wakeAudio(); aimFrom(e); holding = true; holdStart = performance.now();
+  wakeAudio(); aimFrom(e);
   try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+  if (e.pointerType !== 'mouse') return;
+  holding = true; holdStart = performance.now();
   dropper.position.x = aimX; tryDrop();
 });
 canvas.addEventListener('pointermove', aimFrom);
 for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(ev, () => { holding = false; });
+const dropBtn = $('dropBtn');
+dropBtn.addEventListener('pointerdown', e => {
+  e.preventDefault(); wakeAudio();
+  try { dropBtn.setPointerCapture(e.pointerId); } catch (err) {}
+  holding = true; holdStart = performance.now(); tryDrop();   // hold to keep dropping
+});
+for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) dropBtn.addEventListener(ev, () => { holding = false; });
+dropBtn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); wakeAudio(); tryDrop(); } });
+dropBtn.addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('keydown', e => {
   if (e.target.tagName === 'BUTTON' || !$('modal').hidden) return;
   if (e.key === 'ArrowLeft') { aimX = clamp(aimX - 0.35, -4.8, 4.8); e.preventDefault(); }
@@ -1120,7 +1145,7 @@ function openMenu() {
     <h2>Menu</h2>
     <p>Level ${prog.level} · ${bank.toLocaleString()} medals${tray ? ` (+${tray.toLocaleString()} to collect)` : ''} · ${won.toLocaleString()} paid out · jackpot ${Math.floor(prog.jackpot)}</p>
     <div class="howto">
-      <p><b>How to play:</b> move or tap to aim, press or hold to drop. Medals pushed off the front go to your tray; press Collect to bank them. Medals that fall into the side pockets are lost.</p>
+      <p><b>How to play:</b> move the mouse or drag on the table to aim, then press DROP (hold to keep dropping). With a mouse you can also click the table, or press Space. Medals pushed off the front go to your tray; press Collect to bank them. Medals that fall into the side pockets are lost.</p>
       <p><b>Slot:</b> drop through the red ring to spin. 777 pays the whole jackpot + 2 bonus balls · BAR 6 + a medal stack · ★ 3 · ◆ 1.</p>
       <p><b>Prizes:</b> gold medal 5 · medal stack 25 · bonus ball 3 free spins.</p>
     </div>
