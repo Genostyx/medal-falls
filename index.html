@@ -158,6 +158,7 @@
     </div>
     <div class="btns">
       <button type="button" id="mute" aria-pressed="false">Sound on</button>
+      <button type="button" id="menuBtn">Menu</button>
     </div>
   </footer>
 
@@ -192,7 +193,7 @@ const PUSH_MIN = -2.8, PUSH_MAX = -0.4, PUSH_PERIOD = 3.2;
 const PUSH_MID = (PUSH_MIN + PUSH_MAX) / 2, PUSH_AMP = (PUSH_MAX - PUSH_MIN) / 2;
 const WALL_Z = -6.5;
 // the dropper slides along the top of the back glass; medals fall onto the pusher's top shelf
-const DROP_Y = 4.6, DROP_Z = -5.65, GATE_Y = 2.85;
+const DROP_Y = 4.6, DROP_Z = -5.65, GATE_Y = 2.55;   // ring sits in the gap between slot panel and logo
 const MAX_COINS = 320;
 const STEP = 1 / 120;
 const GOLD_VALUE = 5;
@@ -219,7 +220,8 @@ try {
   const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
   if (s) { bank = s.bank | 0; won = s.won | 0; Object.assign(prog, s.prog || {}); }
 } catch (e) {}
-function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ bank, won, prog })); } catch (e) {} }
+let resetting = false;   // once a reset starts, nothing may write the old state back
+function save() { if (resetting) return; try { localStorage.setItem(SAVE_KEY, JSON.stringify({ bank, won, prog })); } catch (e) {} }
 setInterval(save, 2000);
 addEventListener('visibilitychange', save);
 
@@ -445,8 +447,8 @@ const drawWall = (g, w, h) => {
   g.textAlign = 'center'; g.textBaseline = 'middle';
   g.font = '120px Bungee, "Arial Black", sans-serif';
   // logo sits low on the glass: dropper track on top, slot panel under it, then the logo
-  g.lineWidth = 10; g.strokeStyle = 'rgba(80,30,0,.9)'; g.strokeText('MEDAL FALLS', w / 2, h * 0.77);
-  g.fillStyle = '#ffb000'; g.fillText('MEDAL FALLS', w / 2, h * 0.77);
+  g.lineWidth = 10; g.strokeStyle = 'rgba(80,30,0,.9)'; g.strokeText('MEDAL FALLS', w / 2, h * 0.84);
+  g.fillStyle = '#ffb000'; g.fillText('MEDAL FALLS', w / 2, h * 0.84);
 };
 const wallTex = canvasTex(1024, 384, drawWall);
 const wallH = 5.3 - (PUSH_H + 0.04);
@@ -502,7 +504,7 @@ box(TABLE_W * 2 - 0.4, 0.12, 0.1, new THREE.MeshStandardMaterial({ color: 0x1a25
 
 const gate = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.075, 12, 48), redGlow);
 gate.rotation.x = Math.PI / 2;
-gate.position.set(0, GATE_Y, DROP_Z + 0.12);   // nudged forward so the ring clears the glass
+gate.position.set(0, GATE_Y, DROP_Z + 0.25);   // nudged forward so the ring clears the glass
 scene.add(gate);
 let gateFlash = 0;
 
@@ -717,7 +719,7 @@ const sg = slotCanvas.getContext('2d');
 const slotTex = new THREE.CanvasTexture(slotCanvas);
 slotTex.colorSpace = THREE.SRGBColorSpace; slotTex.anisotropy = 8;
 const slotPanel = new THREE.Mesh(new THREE.PlaneGeometry(SLOT_W, SLOT_H), new THREE.MeshBasicMaterial({ map: slotTex, toneMapped: false }));
-slotPanel.position.set(0, 3.0 + SLOT_H / 2, WALL_Z + 0.18);   // below the dropper track, above the logo
+slotPanel.position.set(0, 3.05 + SLOT_H / 2, WALL_Z + 0.18);  // below the dropper track, above the ring
 scene.add(slotPanel);
 
 function rr(x, y, w, h, r) { sg.beginPath(); sg.roundRect(x, y, w, h, r); }
@@ -1007,6 +1009,26 @@ addEventListener('keydown', e => {
   if (e.key === 'ArrowRight') { aimX = clamp(aimX + 0.35, -4.8, 4.8); e.preventDefault(); }
   if (e.key === ' ' || e.key === 'Enter') { wakeAudio(); tryDrop(); e.preventDefault(); }
 });
+$('menuBtn').addEventListener('click', () => openMenu());
+function openMenu() {
+  openModal(`
+    <h2>Menu</h2>
+    <p>Level ${prog.level} · ${bank.toLocaleString()} medals · ${won.toLocaleString()} paid out · jackpot ${Math.floor(prog.jackpot)}</p>
+    <div class="actions"><button type="button" id="resetAsk">Reset game</button><button type="button" class="buy" id="menuClose">Back to game</button></div>`);
+  $('menuClose').addEventListener('click', closeModal);
+  $('resetAsk').addEventListener('click', () => {
+    openModal(`
+      <h2>Reset game?</h2>
+      <p>This wipes your medals, level, daily streak, jackpot and demo purchases, and starts you over with 100 medals. It can't be undone.</p>
+      <div class="actions"><button type="button" id="resetNo">Cancel</button><button type="button" class="buy" id="resetYes">Reset</button></div>`);
+    $('resetNo').addEventListener('click', openMenu);
+    $('resetYes').addEventListener('click', () => {
+      resetting = true;
+      try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
+      location.reload();
+    });
+  });
+}
 $('mute').addEventListener('click', e => {
   wakeAudio(); muted = !muted;
   e.currentTarget.textContent = muted ? 'Sound off' : 'Sound on';
