@@ -286,7 +286,6 @@ const PUSH_MID = (PUSH_MIN + PUSH_MAX) / 2, PUSH_AMP = (PUSH_MAX - PUSH_MIN) / 2
 const WALL_Z = -6.5;
 // the dropper slides along the top of the back glass; medals fall onto the pusher's top shelf
 const DROP_Y = 4.6, DROP_Z = -5.65, GATE_Y = 2.55;   // ring sits in the gap between slot panel and logo
-const MAX_COINS = 400;   // thinner medals pack tighter, so the table holds more
 const STEP = 1 / 120;
 const GOLD_VALUE = 5;
 const STACK_COINS = 8, STACK_HH = COIN_HH * STACK_COINS, STACK_VALUE = 25;   // prize: a fused stack of gold medals
@@ -674,14 +673,24 @@ let gateFlash = 0;
 
 // medals
 const coinGeo = new THREE.CylinderGeometry(COIN_R, COIN_R, COIN_HH * 2, 40, 1);
-function coinMesh(mats) {
-  const m = new THREE.InstancedMesh(coinGeo, mats, MAX_COINS);
+function coinMesh(mats, capacity) {
+  const m = new THREE.InstancedMesh(coinGeo, mats, capacity);
   m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; m.count = 0;
   m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   scene.add(m); return m;
 }
-const goldMats = coinMats(0xf0b73c);
-const silverMesh = coinMesh(coinMats(0xdfe6ec)), goldMesh = coinMesh(goldMats);
+// There is no limit on medals: the instanced meshes start with room for 512 and double whenever
+// the table outgrows them (a mesh's instance buffer can't be resized in place, so it's rebuilt).
+const goldMats = coinMats(0xf0b73c), silverMats = coinMats(0xdfe6ec);
+let coinCapacity = 512;
+let silverMesh = coinMesh(silverMats, coinCapacity), goldMesh = coinMesh(goldMats, coinCapacity);
+function ensureCoinCapacity(n) {
+  if (n <= coinCapacity) return;
+  while (coinCapacity < n) coinCapacity *= 2;
+  for (const old of [silverMesh, goldMesh]) { scene.remove(old); old.dispose(); }
+  silverMesh = coinMesh(silverMats, coinCapacity);
+  goldMesh = coinMesh(goldMats, coinCapacity);
+}
 
 // prizes are few, so they get ordinary meshes
 const ballGeo = new THREE.SphereGeometry(BALL_R, 32, 20);
@@ -731,7 +740,6 @@ function buildPhysics() {
 
 // kind: 'coin' | 'gold' | 'stack' | 'ball'
 function spawnCoin(x, y, z, { gold = false, kind = gold ? 'gold' : 'coin', vy = 0, tilt = 0.08, rot = null } = {}) {
-  if (coins.length >= MAX_COINS) return null;
   const q = rot ? new THREE.Quaternion(rot[0], rot[1], rot[2], rot[3]).normalize()
     : new THREE.Quaternion().setFromEuler(new THREE.Euler(rand(-tilt, tilt), rand(0, Math.PI * 2), rand(-tilt, tilt)));
   const ball = kind === 'ball';
@@ -1157,7 +1165,6 @@ function tryDrop() {
     if (tray > 0) { nudgeCollect(); return; }   // winnings are waiting; point at them before the shop
     openShop(true); return;
   }
-  if (coins.length >= MAX_COINS) return;
   lastDrop = now;
   bank--;
   prog.jackpot += JACKPOT_PER_DROP;                  // every medal dropped feeds the jackpot
@@ -1252,6 +1259,7 @@ const M = new THREE.Matrix4(), P = new THREE.Vector3(), Q = new THREE.Quaternion
 let acc = 0, last = performance.now();
 
 function render() {
+  ensureCoinCapacity(coins.length);
   let si = 0, gi = 0;
   for (const c of coins) {
     const t = c.body.translation(), r = c.body.rotation();
