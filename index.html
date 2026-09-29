@@ -759,16 +759,18 @@ function drawSlot(now) {
   }
 
   // progressive jackpot, then queued spins
-  g.font = '600 20px "Chivo Mono", monospace'; g.fillStyle = '#7f93a3';
-  g.fillText('JACKPOT', 128, 48);
-  g.font = (prog.jackpot >= 10000 ? '36px' : '46px') + ' Bungee, "Arial Black", sans-serif';
+  // labels match the message text on the right ("HIT THE RING")
+  const labelFont = '34px Bungee, "Arial Black", sans-serif';
+  g.font = labelFont; g.fillStyle = '#c8d2da';
+  g.fillText('JACKPOT', 128, 46);
+  g.font = (prog.jackpot >= 10000 ? '34px' : '42px') + ' Bungee, "Arial Black", sans-serif';
   g.fillStyle = '#ff4a3d'; g.shadowColor = '#ff4a3d'; g.shadowBlur = 16;
-  g.fillText(Math.floor(prog.jackpot).toLocaleString(), 128, 94);
+  g.fillText(Math.floor(prog.jackpot).toLocaleString(), 128, 92);
   g.shadowBlur = 0;
-  g.font = '600 20px "Chivo Mono", monospace'; g.fillStyle = '#7f93a3';
-  g.fillText('STOCK', 128, 148);
+  g.font = labelFont; g.fillStyle = '#c8d2da';
+  g.fillText('SPINS', 128, 150);
   [68, 108, 148, 188].forEach((lx, i) => {
-    const ly = 196, on = i < slot.stock;
+    const ly = 200, on = i < slot.stock;
     g.beginPath(); g.arc(lx, ly, 14, 0, Math.PI * 2);
     g.shadowColor = '#ffb000'; g.shadowBlur = on ? 22 : 0;
     g.fillStyle = on ? '#ffb000' : '#213447'; g.fill();
