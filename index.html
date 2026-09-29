@@ -187,6 +187,26 @@
     window.addEventListener('unhandledrejection', function (e) { window.reportError(e.reason); });
     // if the game never finishes loading, say so instead of sitting on the loading screen forever
     setTimeout(function () { if (document.getElementById('loading')) show('Still loading after 25 seconds (step: ' + (document.getElementById('loadmsg') || {}).textContent + ')'); }, 25000);
+
+    // Crash checkpoints. A browser that kills the page (out of memory) runs no error handlers, so
+    // each stage is written to storage as it's reached; if the last visit never closed cleanly,
+    // this visit reports where it stopped.
+    var CRUMB_KEY = 'medalfalls.crumbs', prev = null;
+    try { prev = JSON.parse(localStorage.getItem(CRUMB_KEY) || 'null'); } catch (e) {}
+    if (prev && !prev.clean) {
+      show('Last visit stopped unexpectedly at "' + prev.stage + '", ' + prev.t + 's after opening' +
+        (prev.frames ? ', frame ' + prev.frames : '') + (prev.coins ? ', ' + prev.coins + ' medals on the table' : '') +
+        (prev.lite ? ' (lite mode)' : ''));
+    }
+    window.crumb = function (stage, extra) {
+      var d = { stage: stage, t: Math.round(performance.now() / 100) / 10, clean: false, lite: /[?&]lite/.test(location.search) };
+      for (var k in extra) d[k] = extra[k];
+      try { localStorage.setItem(CRUMB_KEY, JSON.stringify(d)); } catch (e) {}
+    };
+    addEventListener('pagehide', function () {
+      try { var d = JSON.parse(localStorage.getItem(CRUMB_KEY) || '{}'); d.clean = true; localStorage.setItem(CRUMB_KEY, JSON.stringify(d)); } catch (e) {}
+    });
+    window.crumb('page opened');
   })();
 </script>
 <div id="app">
@@ -240,6 +260,10 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import RAPIER from 'rapier';
+const crumb = window.crumb || (() => {});
+crumb('libraries loaded');
+// ?lite in the address: bare-bones graphics (no reflections, no shadows, low resolution), for diagnosing weak devices
+const LITE = /[?&]lite/.test(location.search);
 
 // ---------- layout (world units; a medal is 1.2 across) ----------
 const TABLE_W = 5.5;                 // half width of the playfield
@@ -360,8 +384,9 @@ canvas.addEventListener('webglcontextlost', () => window.reportError?.('WebGL co
 // Phones get lighter settings from the first frame: high-DPI screens don't need MSAA, and mobile
 // browsers (iOS Safari especially) can drop the whole 3D view under heavy GPU memory use.
 const touchDevice = matchMedia('(pointer: coarse)').matches || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: !touchDevice, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, touchDevice ? 1.5 : 2));
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !touchDevice && !LITE, powerPreference: 'high-performance' });
+renderer.setPixelRatio(LITE ? 1 : Math.min(devicePixelRatio, touchDevice ? 1.5 : 2));
+crumb('3D view created');
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 renderer.shadowMap.enabled = true;
@@ -371,7 +396,9 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0b1620);
 scene.fog = new THREE.Fog(0x0b1620, 28, 55);
 const pmrem = new THREE.PMREMGenerator(renderer);
-scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+if (LITE) scene.add(new THREE.HemisphereLight(0xdfe8f0, 0x202830, 2.2));   // flat light instead of reflections
+else scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+crumb('lighting built');
 scene.environmentIntensity = 0.85;
 
 const camera = new THREE.PerspectiveCamera(44, 1, 0.1, 100);
@@ -417,7 +444,7 @@ function softwareRenderer() {
 }
 // Software rendering: switch shadows off now, before anything is drawn. Toggling shadows later
 // recompiles every material at once, which is exactly what can knock mobile Safari's 3D view out.
-if (softwareRenderer()) { renderer.shadowMap.enabled = false; key.castShadow = false; renderer.setPixelRatio(1); lowQuality = true; }
+if (LITE || softwareRenderer()) { renderer.shadowMap.enabled = false; key.castShadow = false; renderer.setPixelRatio(1); lowQuality = true; }
 // Mid-game the only adjustment is resolution, which needs no shader rebuilds.
 function setLowQuality() {
   if (lowQuality) return;
@@ -1225,6 +1252,7 @@ function render() {
   updateSlot(performance.now());
   renderer.render(scene, camera);
 }
+let frameCount = 0;
 function frame(now) {
   // schedule first: one bad frame must not stop the game (and its error gets reported on screen)
   requestAnimationFrame(frame);
@@ -1237,6 +1265,7 @@ function frame(now) {
     if (n === 5) acc = 0;
     if (holding && now - holdStart > HOLD_REPEAT_MS) tryDrop();
     render();
+    if (++frameCount % 30 === 1) crumb('playing', { frames: frameCount, coins: coins.length });
   } catch (e) { window.reportError?.(e); }
 }
 
@@ -1249,7 +1278,11 @@ async function boot() {
   wallTex.needsUpdate = true;
   buildWall();
 
+  // lite mode has no reflections to light full metal, so soften metals enough to read under flat light
+  if (LITE) scene.traverse(o => { for (const m of [].concat(o.material || [])) if (m.metalness > 0.5) m.metalness = 0.35; });
+  crumb('starting physics');
   await RAPIER.init();
+  crumb('physics started');
   $('loadmsg').textContent = 'Settling the table';
   buildPhysics();
   const saved = loadField();
@@ -1279,6 +1312,7 @@ async function boot() {
     for (let i = 0; i < 420; i++) stepSim();
   }
   counting = true;
+  crumb('table ready', { coins: coins.length });
   if (slot.stock > 0 && !spinning) nextSpin();
   resize();
   $('loading').remove();
