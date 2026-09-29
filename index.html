@@ -189,17 +189,17 @@ const TABLE_FRONT = 6, TABLE_BACK = -11;
 // Side pockets (the house cut): the glass runs the full length, but each side wall has a low
 // open window here. Medals pushed against the wall at this stretch spill out and are lost.
 const POCKET_Z0 = 0.8, POCKET_Z1 = 3.8, POCKET_H = 0.9;
-const COIN_R = 0.6, COIN_HH = 0.08;
+const COIN_R = 0.6, COIN_HH = 0.045;   // quarter proportions: about 14x wider than thick
 const PUSH_H = 1.2, PUSH_HALF_D = 4;
 const PUSH_MIN = -2.8, PUSH_MAX = -0.4, PUSH_PERIOD = 3.2;
 const PUSH_MID = (PUSH_MIN + PUSH_MAX) / 2, PUSH_AMP = (PUSH_MAX - PUSH_MIN) / 2;
 const WALL_Z = -6.5;
 // the dropper slides along the top of the back glass; medals fall onto the pusher's top shelf
 const DROP_Y = 4.6, DROP_Z = -5.65, GATE_Y = 2.55;   // ring sits in the gap between slot panel and logo
-const MAX_COINS = 320;
+const MAX_COINS = 400;   // thinner medals pack tighter, so the table holds more
 const STEP = 1 / 120;
 const GOLD_VALUE = 5;
-const STACK_HH = COIN_HH * 5, STACK_VALUE = 25;   // prize: a fused stack of five gold medals
+const STACK_COINS = 8, STACK_HH = COIN_HH * STACK_COINS, STACK_VALUE = 25;   // prize: a fused stack of gold medals
 const BALL_R = 0.7, BALL_SPINS = 3;                // prize: bonus ball, pays free spins
 const MAX_PRIZES = 6;
 const TRAY_Y = -2.2, TRAY_D = 3.4;   // payout chute surround: height and depth
@@ -573,9 +573,9 @@ function makePrizeMesh(kind) {
   if (kind === 'ball') {
     g.add(new THREE.Mesh(ballGeo, ballMat), new THREE.Mesh(bandGeo, ballBand));
   } else {
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < STACK_COINS; i++) {
       const m = new THREE.Mesh(coinGeo, goldMats);
-      m.position.y = (i - 2) * COIN_HH * 2; m.rotation.y = i * 0.9;
+      m.position.y = (i - (STACK_COINS - 1) / 2) * COIN_HH * 2; m.rotation.y = i * 0.9;
       g.add(m);
     }
   }
@@ -619,7 +619,7 @@ function spawnCoin(x, y, z, { gold = false, kind = gold ? 'gold' : 'coin', vy = 
     .setTranslation(x, y, z).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w })
     .setLinvel(0, vy, 0).setLinearDamping(ball ? 0.8 : 0.4).setAngularDamping(ball ? 2 : 3).setCcdEnabled(true));
   const shape = ball ? RAPIER.ColliderDesc.ball(BALL_R)
-    : RAPIER.ColliderDesc.roundCylinder((kind === 'stack' ? STACK_HH : COIN_HH) - 0.03, COIN_R - 0.03, 0.03);
+    : RAPIER.ColliderDesc.roundCylinder((kind === 'stack' ? STACK_HH : COIN_HH) - 0.02, COIN_R - 0.02, 0.02);
   world.createCollider(shape.setFriction(ball ? 0.7 : 0.4).setRestitution(0)
     .setDensity(kind === 'coin' ? 1 : ball ? 0.5 : 1.5), body);
   const c = { body, kind, gold: kind === 'gold', dropped: false, checked: false, prevY: y, vy, won: false };
