@@ -116,6 +116,9 @@
   @keyframes bannerin { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.6); } 12% { opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
                         20% { transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; } }
 
+  #errbox { position: absolute; left: 16px; right: 16px; bottom: 70px; z-index: 10; padding: 10px 12px; border-radius: 6px;
+            background: rgba(60,8,6,.92); border: 1px solid var(--red); color: #ffd9d4; font-size: 11px; line-height: 1.45;
+            white-space: pre-wrap; word-break: break-word; user-select: text; -webkit-user-select: text; pointer-events: auto; }
   #loading { position: absolute; inset: 0; display: grid; place-items: center; background: var(--cab); z-index: 5; text-align: center; padding: 0 16px; }
   #loading .t { font-family: var(--display); font-size: 28px; color: var(--amber); }
   #loading .s { font-size: 12px; color: var(--dim); letter-spacing: .1em; text-transform: uppercase; margin-top: 8px; }
@@ -153,6 +156,28 @@
 </style>
 </head>
 <body>
+<div id="errbox" hidden></div>
+<script>
+  // Plain (non-module) script so it runs even if the game module can't load. Shows the first few
+  // errors on screen with the device's browser version, since phones have no visible console.
+  (function () {
+    var shown = [], box = document.getElementById('errbox');
+    function show(msg) {
+      if (shown.length >= 4 || shown.indexOf(msg) >= 0) return;
+      shown.push(msg);
+      box.textContent = 'Something went wrong. Screenshot this for the developer:\n\n' + shown.join('\n') + '\n\n' + navigator.userAgent;
+      box.hidden = false;
+    }
+    window.reportError = function (e) { show(String(e && (e.stack || e.message) || e).split('\n').slice(0, 3).join(' | ')); };
+    window.addEventListener('error', function (e) {
+      if (e.target && e.target !== window && e.target.src) show('Could not load ' + e.target.src);
+      else show((e.message || 'Error') + ' @ line ' + e.lineno + ':' + e.colno);
+    }, true);
+    window.addEventListener('unhandledrejection', function (e) { window.reportError(e.reason); });
+    // if the game never finishes loading, say so instead of sitting on the loading screen forever
+    setTimeout(function () { if (document.getElementById('loading')) show('Still loading after 25 seconds (step: ' + (document.getElementById('loadmsg') || {}).textContent + ')'); }, 25000);
+  })();
+</script>
 <div id="app">
   <canvas id="c" aria-label="Coin pusher playfield. Move to aim, press or tap to drop a medal."></canvas>
 
@@ -319,6 +344,7 @@ const sfx = {
 
 // ---------- renderer / scene ----------
 const canvas = $('c');
+canvas.addEventListener('webglcontextlost', () => window.reportError?.('WebGL context lost (the browser dropped the 3D view, usually from running out of graphics memory)'));
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -1172,15 +1198,18 @@ function render() {
   renderer.render(scene, camera);
 }
 function frame(now) {
-  const dt = (now - last) / 1000;
-  if (dt < 0.25) watchFrameRate(dt);   // longer gaps are a hidden tab, not a slow GPU
-  acc += Math.min(0.05, dt); last = now;
-  let n = 0;
-  while (acc >= STEP && n < 5) { stepSim(); acc -= STEP; n++; }
-  if (n === 5) acc = 0;
-  if (holding && now - holdStart > HOLD_REPEAT_MS) tryDrop();
-  render();
+  // schedule first: one bad frame must not stop the game (and its error gets reported on screen)
   requestAnimationFrame(frame);
+  try {
+    const dt = (now - last) / 1000;
+    if (dt < 0.25) watchFrameRate(dt);   // longer gaps are a hidden tab, not a slow GPU
+    acc += Math.min(0.05, dt); last = now;
+    let n = 0;
+    while (acc >= STEP && n < 5) { stepSim(); acc -= STEP; n++; }
+    if (n === 5) acc = 0;
+    if (holding && now - holdStart > HOLD_REPEAT_MS) tryDrop();
+    render();
+  } catch (e) { window.reportError?.(e); }
 }
 
 // ---------- boot ----------
@@ -1233,7 +1262,8 @@ async function boot() {
 }
 boot().catch(err => {
   console.error(err);
-  $('loadmsg').textContent = 'The physics engine could not start: ' + (err && err.message || err);
+  window.reportError?.(err);
+  $('loadmsg').textContent = 'The game could not start: ' + (err && err.message || err);
 });
 </script>
 </body>
