@@ -357,8 +357,11 @@ const sfx = {
 // ---------- renderer / scene ----------
 const canvas = $('c');
 canvas.addEventListener('webglcontextlost', () => window.reportError?.('WebGL context lost (the browser dropped the 3D view, usually from running out of graphics memory)'));
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// Phones get lighter settings from the first frame: high-DPI screens don't need MSAA, and mobile
+// browsers (iOS Safari especially) can drop the whole 3D view under heavy GPU memory use.
+const touchDevice = matchMedia('(pointer: coarse)').matches || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !touchDevice, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, touchDevice ? 1.5 : 2));
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 renderer.shadowMap.enabled = true;
@@ -394,7 +397,7 @@ addEventListener('resize', resize);
 const key = new THREE.DirectionalLight(0xfff1dc, 2.2);
 key.position.set(4, 15, 9);
 key.castShadow = true;
-key.shadow.mapSize.set(2048, 2048);
+key.shadow.mapSize.set(touchDevice ? 1024 : 2048, touchDevice ? 1024 : 2048);
 key.shadow.camera.left = -9; key.shadow.camera.right = 9; key.shadow.camera.top = 12; key.shadow.camera.bottom = -12;
 key.shadow.camera.near = 1; key.shadow.camera.far = 40;
 key.shadow.bias = -0.0006; key.shadow.normalBias = 0.02;
@@ -412,15 +415,15 @@ function softwareRenderer() {
     return /swiftshader|basic render|llvmpipe|softpipe|warp|software/i.test(name);
   } catch (e) { return false; }
 }
+// Software rendering: switch shadows off now, before anything is drawn. Toggling shadows later
+// recompiles every material at once, which is exactly what can knock mobile Safari's 3D view out.
+if (softwareRenderer()) { renderer.shadowMap.enabled = false; key.castShadow = false; renderer.setPixelRatio(1); lowQuality = true; }
+// Mid-game the only adjustment is resolution, which needs no shader rebuilds.
 function setLowQuality() {
   if (lowQuality) return;
   lowQuality = true;
-  renderer.shadowMap.enabled = false; key.castShadow = false;
   renderer.setPixelRatio(1); resize();
-  scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => { m.needsUpdate = true; }); });
 }
-if (softwareRenderer()) setLowQuality();
-// Slow GPUs that report as hardware: watch real frame times and drop quality if they stay low.
 const frameTimes = [];
 function watchFrameRate(dt) {
   if (lowQuality || simTime < 3) return;
@@ -428,7 +431,7 @@ function watchFrameRate(dt) {
   if (frameTimes.length < 90) return;
   const avg = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
   frameTimes.length = 0;
-  if (avg > 1 / 32) setLowQuality();   // under ~32 fps sustained
+  if (avg > 1 / 24) setLowQuality();   // under ~24 fps sustained (phones capped at 30 fps are fine)
 }
 
 // ---------- canvas textures ----------
