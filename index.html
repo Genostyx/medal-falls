@@ -153,8 +153,8 @@
 
   <footer class="foot">
     <div class="hints">
-      <p class="hint">Move to aim · click or hold to drop · drop through the <b>red ring</b> to spin · gold medals pay 10</p>
-      <p class="paytable"><b>777</b> the whole jackpot · <b>BAR</b> 20 + 1 gold · <b>★</b> 10 · <b>◆</b> 5 medals showered</p>
+      <p class="hint">Move to aim · click or hold to drop · drop through the <b>red ring</b> to spin · gold medals pay 5</p>
+      <p class="paytable"><b>777</b> the whole jackpot + 2 bonus balls · <b>BAR</b> 10 + medal stack · <b>★</b> 5 · <b>◆</b> 2 · <b>ball</b> 3 free spins · <b>stack</b> 25</p>
     </div>
     <div class="btns">
       <button type="button" id="mute" aria-pressed="false">Sound on</button>
@@ -185,7 +185,7 @@ import RAPIER from 'rapier';
 // ---------- layout (world units; a medal is 1.2 across) ----------
 const TABLE_W = 5.5;                 // half width of the playfield
 const TABLE_FRONT = 6, TABLE_BACK = -11;
-const SIDE_OPEN_Z = 3.4;             // side walls stop here; medals off the sides past it are lost
+const SIDE_OPEN_Z = 1.6;             // side walls stop here; medals off the sides past it are lost
 const COIN_R = 0.6, COIN_HH = 0.08;
 const PUSH_H = 1.2, PUSH_HALF_D = 4;
 const PUSH_MIN = -2.8, PUSH_MAX = -0.4, PUSH_PERIOD = 3.2;
@@ -194,7 +194,10 @@ const WALL_Z = -6.5;
 const DROP_Y = 4.6, DROP_Z = -1.4, GATE_Y = 3.1;
 const MAX_COINS = 320;
 const STEP = 1 / 120;
-const GOLD_VALUE = 10;
+const GOLD_VALUE = 5;
+const STACK_HH = COIN_HH * 5, STACK_VALUE = 25;   // prize: a fused stack of five gold medals
+const BALL_R = 0.7, BALL_SPINS = 3;                // prize: bonus ball, pays free spins
+const MAX_PRIZES = 6;
 const TRAY_Y = -2.2, TRAY_D = 3.4;   // payout chute surround: height and depth
 
 const $ = id => document.getElementById(id);
@@ -206,7 +209,7 @@ const gateXAt = t => 3.4 * Math.sin(t * 1.1) + 1.0 * Math.sin(t * 2.7 + 1);
 
 // ---------- saved progress (per-viewer convenience) ----------
 const SAVE_KEY = 'medalfalls.v1';
-const JACKPOT_SEED = 200;
+const JACKPOT_SEED = 30, JACKPOT_PER_DROP = 1 / 30;  // pool grows one medal per 30 dropped
 const FREE_CAP = 30, FREE_EVERY = 60000;          // free medals trickle back up to 30, one a minute
 const DAILY = [20, 30, 40, 60, 80, 100, 200];      // login streak rewards, day 1-7
 let bank = 100, won = 0;
@@ -233,8 +236,17 @@ function tone(freq, dur, type = 'sine', vol = 0.1, when = 0, slide = 0) {
   g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur + 0.02);
 }
-let lastDing = 0;
+let lastDing = 0, lastClink = 0;
 const sfx = {
+  clink(hit, kind) {
+    const n = performance.now();
+    if (n - lastClink < 30) return;            // a pile landing is a rattle, not a wall of noise
+    lastClink = n;
+    const v = Math.min(0.07, 0.008 * hit);
+    if (kind === 'ball') { tone(180 + Math.random() * 40, .09, 'sine', v * 1.4); return; }
+    const f = (kind === 'stack' ? 1500 : 2600) + Math.random() * 2200;
+    tone(f, .05, 'triangle', v); tone(f * 1.47, .035, 'sine', v * .5, .004);
+  },
   drop() { tone(2600 + Math.random() * 900, .08, 'triangle', .07); tone(5400 + Math.random() * 800, .05, 'sine', .03, .012); },
   win(gold) { const n = performance.now(); if (n - lastDing < 45) return; lastDing = n;
     tone(gold ? 1319 : 1568, .16, 'sine', .1); tone(gold ? 1976 : 2349, .22, 'sine', .06, .05); },
@@ -269,13 +281,14 @@ function resize() {
   const w = canvas.clientWidth, h = canvas.clientHeight, aspect = w / h;
   renderer.setSize(w, h, false);
   camera.aspect = aspect;
-  const hfov = 2 * Math.atan(7.4 / 17.5);
-  const need = 2 * Math.atan(Math.tan(hfov / 2) / aspect) * 180 / Math.PI;
-  camera.fov = clamp(Math.max(44, need), 44, 88);
-  // portrait screens: back the camera up and tilt down so the HUD sits over the marquee, not the medals
+  // Portrait screens are width-limited: swing the camera up over the table so its depth fills
+  // the tall screen, and fit the table's width (not the cabinet's) edge to edge.
   const portrait = clamp((1.2 - aspect) / 0.7, 0, 1);
-  camera.position.set(0, 10.5 + portrait * 2.5, 14 + portrait * 1.5);
-  camTarget.set(0, 0.2 - portrait * 1.2, -0.6 + portrait * 0.8);
+  camera.position.set(0, 10.5 + portrait * 8.5, 14 - portrait * 5.5);
+  camTarget.set(0, 0.2 - portrait * 0.2, -0.6 - portrait * 0.2);
+  const halfW = 7.4 - portrait * 1.3, dist = camera.position.distanceTo(camTarget);
+  const need = 2 * Math.atan(halfW / dist / aspect) * 180 / Math.PI;
+  camera.fov = clamp(Math.max(44, need), 44, 100);
   camera.lookAt(camTarget);
   camera.updateProjectionMatrix();
 }
@@ -292,6 +305,34 @@ scene.add(key);
 const warm = new THREE.PointLight(0xffa640, 30, 16, 2);
 warm.position.set(0, 3, 7);
 scene.add(warm);
+
+// ---------- quality: browsers drawing in software get a lighter scene ----------
+let lowQuality = false;
+function softwareRenderer() {
+  try {
+    const gl = renderer.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const name = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+    return /swiftshader|basic render|llvmpipe|softpipe|warp|software/i.test(name);
+  } catch (e) { return false; }
+}
+function setLowQuality() {
+  if (lowQuality) return;
+  lowQuality = true;
+  renderer.shadowMap.enabled = false; key.castShadow = false;
+  renderer.setPixelRatio(1); resize();
+  scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => { m.needsUpdate = true; }); });
+}
+if (softwareRenderer()) setLowQuality();
+// Slow GPUs that report as hardware: watch real frame times and drop quality if they stay low.
+const frameTimes = [];
+function watchFrameRate(dt) {
+  if (lowQuality || simTime < 3) return;
+  frameTimes.push(dt);
+  if (frameTimes.length < 90) return;
+  const avg = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
+  frameTimes.length = 0;
+  if (avg > 1 / 32) setLowQuality();   // under ~32 fps sustained
+}
 
 // ---------- canvas textures ----------
 function canvasTex(w, h, draw, srgb = true) {
@@ -463,13 +504,35 @@ let gateFlash = 0;
 
 // medals
 const coinGeo = new THREE.CylinderGeometry(COIN_R, COIN_R, COIN_HH * 2, 40, 1);
-function coinMesh(tint) {
-  const m = new THREE.InstancedMesh(coinGeo, coinMats(tint), MAX_COINS);
+function coinMesh(mats) {
+  const m = new THREE.InstancedMesh(coinGeo, mats, MAX_COINS);
   m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; m.count = 0;
   m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   scene.add(m); return m;
 }
-const silverMesh = coinMesh(0xdfe6ec), goldMesh = coinMesh(0xf0b73c);
+const goldMats = coinMats(0xf0b73c);
+const silverMesh = coinMesh(coinMats(0xdfe6ec)), goldMesh = coinMesh(goldMats);
+
+// prizes are few, so they get ordinary meshes
+const ballGeo = new THREE.SphereGeometry(BALL_R, 32, 20);
+const ballMat = new THREE.MeshPhysicalMaterial({ color: 0xd8261b, emissive: 0x3a0503, roughness: 0.22, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0.1 });
+const ballBand = new THREE.MeshStandardMaterial({ color: 0xf4ecd8, roughness: 0.4 });
+const bandGeo = new THREE.TorusGeometry(BALL_R * 0.99, 0.07, 8, 40);
+function makePrizeMesh(kind) {
+  const g = new THREE.Group();
+  if (kind === 'ball') {
+    g.add(new THREE.Mesh(ballGeo, ballMat), new THREE.Mesh(bandGeo, ballBand));
+  } else {
+    for (let i = 0; i < 5; i++) {
+      const m = new THREE.Mesh(coinGeo, goldMats);
+      m.position.y = (i - 2) * COIN_HH * 2; m.rotation.y = i * 0.9;
+      g.add(m);
+    }
+  }
+  g.traverse(o => { o.castShadow = o.receiveShadow = true; });
+  scene.add(g);
+  return g;
+}
 
 // ---------- physics ----------
 let world, pusherBody;
@@ -495,19 +558,25 @@ function buildPhysics() {
   world.createCollider(RAPIER.ColliderDesc.cuboid(TABLE_W - 0.02, PUSH_H / 2, PUSH_HALF_D).setFriction(0.55), pusherBody);
 }
 
-function spawnCoin(x, y, z, { gold = false, vy = 0, tilt = 0.08 } = {}) {
+// kind: 'coin' | 'gold' | 'stack' | 'ball'
+function spawnCoin(x, y, z, { gold = false, kind = gold ? 'gold' : 'coin', vy = 0, tilt = 0.08 } = {}) {
   if (coins.length >= MAX_COINS) return null;
   const e = new THREE.Euler(rand(-tilt, tilt), rand(0, Math.PI * 2), rand(-tilt, tilt));
   const q = new THREE.Quaternion().setFromEuler(e);
+  const ball = kind === 'ball';
   const body = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic()
     .setTranslation(x, y, z).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w })
-    .setLinvel(0, vy, 0).setLinearDamping(0.4).setAngularDamping(3).setCcdEnabled(true));
-  world.createCollider(RAPIER.ColliderDesc.roundCylinder(COIN_HH - 0.03, COIN_R - 0.03, 0.03)
-    .setFriction(0.4).setRestitution(0).setDensity(gold ? 1.5 : 1), body);
-  const c = { body, gold, dropped: false, checked: false, prevY: y, won: false };
+    .setLinvel(0, vy, 0).setLinearDamping(ball ? 0.8 : 0.4).setAngularDamping(ball ? 2 : 3).setCcdEnabled(true));
+  const shape = ball ? RAPIER.ColliderDesc.ball(BALL_R)
+    : RAPIER.ColliderDesc.roundCylinder((kind === 'stack' ? STACK_HH : COIN_HH) - 0.03, COIN_R - 0.03, 0.03);
+  world.createCollider(shape.setFriction(ball ? 0.7 : 0.4).setRestitution(0)
+    .setDensity(kind === 'coin' ? 1 : ball ? 0.5 : 1.5), body);
+  const c = { body, kind, gold: kind === 'gold', dropped: false, checked: false, prevY: y, vy, won: false };
+  if (kind === 'stack' || ball) c.mesh = makePrizeMesh(kind);
   coins.push(c);
   return c;
 }
+const prizeCount = () => coins.reduce((n, c) => n + (c.mesh ? 1 : 0), 0);
 
 function scatter(n, xMin, xMax, zMin, zMax, y, goldEvery = 0) {
   const placed = [];
@@ -519,11 +588,17 @@ function scatter(n, xMin, xMax, zMin, zMax, y, goldEvery = 0) {
 }
 
 let showerQueue = [], showerClock = 0;
-function queueShower(n, gold) {
+function queueShower(n, gold, prizes = []) {
   const list = [];
-  for (let i = 0; i < n; i++) list.push(false);
-  for (let i = 0; i < gold; i++) list.splice((Math.random() * list.length) | 0, 0, true);
+  for (let i = 0; i < n; i++) list.push('coin');
+  for (const k of [...Array(gold).fill('gold'), ...prizes]) list.splice((Math.random() * list.length) | 0, 0, k);
   showerQueue.push(...list);
+}
+// Anything that cannot land on the field (field full, too many prizes) pays out directly.
+function creditDirect(kind) {
+  if (kind === 'ball') { slot.stock = Math.min(4, slot.stock + BALL_SPINS); slot.dirty = true; if (!spinning) nextSpin(); return; }
+  const v = { coin: 1, gold: GOLD_VALUE, stack: STACK_VALUE }[kind];
+  bank += v; won += v;
 }
 
 function stepSim() {
@@ -554,12 +629,19 @@ function stepSim() {
       if (Math.abs(t.x - gx) < (simTime < feverUntil ? 0.9 : 0.52)) onRingHit();
     }
     c.prevY = t.y;
+    // a sharp stop after falling = it landed on something: clink, louder for harder hits
+    if (!c.body.isSleeping()) {
+      const vy = c.body.linvel().y;
+      if (counting && c.vy < -2.5 && vy - c.vy > 2 && t.y > -0.3) sfx.clink(vy - c.vy, c.kind);
+      c.vy = vy;
+    }
     if (!c.won && t.y < -0.5 && t.z > TABLE_FRONT - 0.4 && Math.abs(t.x) < TABLE_W + 0.6) {
       c.won = true;
-      if (counting) payout(c.gold, t);
+      if (counting) payout(c.kind, t);
     }
     if (t.y < -4) {
       world.removeRigidBody(c.body);
+      if (c.mesh) scene.remove(c.mesh);
       coins[i] = coins[coins.length - 1]; coins.pop();
     }
   }
@@ -568,9 +650,11 @@ function stepSim() {
     showerClock -= STEP;
     if (showerClock <= 0) {
       showerClock = 0.05;
-      const gold = showerQueue.shift();
-      const c = spawnCoin(rand(-4.7, 4.7), 6.8, rand(WALL_Z + 0.8, 1.2), { gold, tilt: 0.5 });
-      if (!c) { bank += gold ? GOLD_VALUE : 1; won += gold ? GOLD_VALUE : 1; } // field full: pay straight to the wallet
+      const kind = showerQueue.shift();
+      const prize = kind === 'stack' || kind === 'ball';
+      const c = prize && prizeCount() >= MAX_PRIZES ? null
+        : spawnCoin(rand(-4.5, 4.5), 6.8, rand(WALL_Z + 0.9, 1.2), { kind, tilt: prize ? 0.05 : 0.5 });
+      if (!c) creditDirect(kind);
     }
   }
 }
@@ -578,11 +662,19 @@ function stepSim() {
 // ---------- payouts ----------
 const pops = $('pops');
 const tmpV = new THREE.Vector3();
-function payout(gold, t) {
-  const v = gold ? GOLD_VALUE : 1;
+function payout(kind, t) {
+  if (kind === 'ball') {
+    creditDirect('ball');
+    sfx.pay(true);
+    popAt(t.x, 0.3, TABLE_FRONT, `${BALL_SPINS} FREE SPINS`, true);
+    showBanner('BONUS BALL', `${BALL_SPINS} free spins`, false);
+    return;
+  }
+  const v = { coin: 1, gold: GOLD_VALUE, stack: STACK_VALUE }[kind];
   bank += v; won += v;
-  sfx.win(gold);
-  popAt(t.x, 0.3, TABLE_FRONT, '+' + v, gold);
+  if (kind === 'stack') { sfx.pay(false); showBanner(`+${STACK_VALUE}`, 'medal stack', false); }
+  else sfx.win(kind === 'gold');
+  popAt(t.x, 0.3, TABLE_FRONT, '+' + v, kind !== 'coin');
 }
 function popAt(x, y, z, text, gold) {
   if (pops.childElementCount > 40) return;
@@ -600,15 +692,15 @@ function popAt(x, y, z, text, gold) {
 const SYMS = ['7', 'BAR', '★', '◆', '♣'];
 const SYM_COLOR = { '7': '#ff4a3d', 'BAR': '#1c2a38', '★': '#d98a00', '◆': '#1f7a8c', '♣': '#2d6b3a' };
 const PAYS = {
-  '7': { coins: 0, gold: 5, label: 'JACKPOT' },     // coins = the progressive pool, filled in at payout
-  'BAR': { coins: 20, gold: 1, label: 'BIG WIN' },
-  '★': { coins: 10, gold: 0, label: 'WIN' },
-  '◆': { coins: 5, gold: 0, label: 'WIN' },
+  '7': { coins: 0, gold: 3, prizes: ['ball', 'ball'], label: 'JACKPOT' }, // coins = the progressive pool, filled in at payout
+  'BAR': { coins: 10, gold: 0, prizes: ['stack'], label: 'BIG WIN' },
+  '★': { coins: 5, gold: 0, prizes: [], label: 'WIN' },
+  '◆': { coins: 2, gold: 0, prizes: [], label: 'WIN' },
 };
-const ODDS = [['7', 0.04], ['BAR', 0.08], ['★', 0.12], ['◆', 0.16]];
+const ODDS = [['7', 0.012], ['BAR', 0.04], ['★', 0.08], ['◆', 0.14]];
 const banner = $('banner');
 let spinning = false;
-const FEVER_SECS = 12;               // after any slot win the ring grows and is easier to hit
+const FEVER_SECS = 8;                // after a BAR or 777 the ring grows and is easier to hit
 let feverUntil = 0;
 const slot = {
   sym: ['7', '7', '7'], next: ['7', '7', '7'], spin: [false, false, false], land: [0, 0, 0],
@@ -665,7 +757,7 @@ function drawSlot(now) {
   g.fillText('JACKPOT', 128, 48);
   g.font = (prog.jackpot >= 10000 ? '36px' : '46px') + ' Bungee, "Arial Black", sans-serif';
   g.fillStyle = '#ff4a3d'; g.shadowColor = '#ff4a3d'; g.shadowBlur = 16;
-  g.fillText(prog.jackpot.toLocaleString(), 128, 94);
+  g.fillText(Math.floor(prog.jackpot).toLocaleString(), 128, 94);
   g.shadowBlur = 0;
   g.font = '600 20px "Chivo Mono", monospace'; g.fillStyle = '#7f93a3';
   g.fillText('STOCK', 128, 148);
@@ -744,14 +836,15 @@ function resolve(final, reach) {
     const jp = final[0] === '7';
     if (jp) {
       // the pool rains onto the field; anything past 60 medals goes straight to the wallet
-      hit.coins = prog.jackpot;
-      const extra = Math.max(0, prog.jackpot - 60);
+      const pool = Math.floor(prog.jackpot);
+      hit.coins = pool;
+      const extra = Math.max(0, pool - 60);
       bank += extra; won += extra;
-      queueShower(prog.jackpot - extra, hit.gold);
+      queueShower(pool - extra, hit.gold, hit.prizes);
       prog.jackpot = JACKPOT_SEED;
-    } else queueShower(hit.coins, hit.gold);
+    } else queueShower(hit.coins, hit.gold, hit.prizes);
     slot.winUntil = performance.now() + 2000;
-    feverUntil = simTime + FEVER_SECS;
+    if (jp || final[0] === 'BAR') feverUntil = simTime + FEVER_SECS;
     setMsg(`${hit.label} +${hit.coins}`, true);
     sfx.pay(jp || final[0] === 'BAR');
     showBanner(hit.label, `+${hit.coins} medals${hit.gold ? ` · ${hit.gold} gold` : ''} · fever!`, jp);
@@ -767,16 +860,18 @@ function showBanner(big, sub, jp) {
 }
 
 // ---------- progression: levels, free trickle, daily streak ----------
-const xpNeed = lv => 20 + lv * 10;
+const xpNeed = lv => 30 + lv * 20;
 function addXp(n) {
   prog.xp += n;
   while (prog.xp >= xpNeed(prog.level)) {
     prog.xp -= xpNeed(prog.level);
     prog.level++;
-    const reward = 10 + prog.level * 5;
+    const reward = 3 + prog.level;
     bank += reward;
     slot.stock = Math.min(4, slot.stock + 1); slot.dirty = true;   // a free spin with every level
-    showBanner(`LEVEL ${prog.level}`, `+${reward} medals · free spin`, false);
+    const stack = prog.level % 5 === 0;                              // every fifth level drops a medal stack
+    if (stack) queueShower(0, 0, ['stack']);
+    showBanner(`LEVEL ${prog.level}`, `+${reward} medals · free spin${stack ? ' · medal stack' : ''}`, false);
     sfx.pay(false);
     if (!spinning) nextSpin();
   }
@@ -887,8 +982,8 @@ function tryDrop() {
   if (coins.length >= MAX_COINS) return;
   lastDrop = now;
   bank--;
-  prog.jackpot++;                                    // every medal dropped feeds the jackpot
-  const lucky = Math.random() < 0.04;                // 1 in 25 drops turns gold
+  prog.jackpot += JACKPOT_PER_DROP;                  // every medal dropped feeds the jackpot
+  const lucky = Math.random() < 0.01;                // 1 in 100 drops turns gold
   const c = spawnCoin(dropper.position.x + rand(-0.04, 0.04), DROP_Y, DROP_Z + rand(-0.04, 0.04), { vy: -3, tilt: 0.1, gold: lucky });
   c.dropped = true;
   sfx.drop();
@@ -925,6 +1020,7 @@ function render() {
   let si = 0, gi = 0;
   for (const c of coins) {
     const t = c.body.translation(), r = c.body.rotation();
+    if (c.mesh) { c.mesh.position.set(t.x, t.y, t.z); c.mesh.quaternion.set(r.x, r.y, r.z, r.w); continue; }
     P.set(t.x, t.y, t.z); Q.set(r.x, r.y, r.z, r.w); M.compose(P, Q, S);
     if (c.gold) goldMesh.setMatrixAt(gi++, M); else silverMesh.setMatrixAt(si++, M);
   }
@@ -947,7 +1043,9 @@ function render() {
   renderer.render(scene, camera);
 }
 function frame(now) {
-  acc += Math.min(0.05, (now - last) / 1000); last = now;
+  const dt = (now - last) / 1000;
+  if (dt < 0.25) watchFrameRate(dt);   // longer gaps are a hidden tab, not a slow GPU
+  acc += Math.min(0.05, dt); last = now;
   let n = 0;
   while (acc >= STEP && n < 5) { stepSim(); acc -= STEP; n++; }
   if (n === 5) acc = 0;
@@ -973,6 +1071,9 @@ async function boot() {
   scatter(24, -4.7, 4.7, f0 + 1.0, TABLE_FRONT - 1.0, 0.32);
   scatter(12, -4.4, 4.4, 1.0, TABLE_FRONT - 1.3, 0.54);
   scatter(22, -4.9, 4.9, WALL_Z + 0.75, f0 - 0.7, PUSH_H + 0.12);
+  // two prizes to chase from the first drop
+  spawnCoin(1.6, 1.2, 3.2, { kind: 'stack', tilt: 0 });
+  spawnCoin(-2.2, PUSH_H + 1.2, WALL_Z + 2.2, { kind: 'ball', tilt: 0 });
   await new Promise(r => setTimeout(r, 0));
   for (let i = 0; i < 420; i++) stepSim();
   counting = true;
