@@ -191,7 +191,8 @@ const PUSH_H = 1.2, PUSH_HALF_D = 4;
 const PUSH_MIN = -2.8, PUSH_MAX = -0.4, PUSH_PERIOD = 3.2;
 const PUSH_MID = (PUSH_MIN + PUSH_MAX) / 2, PUSH_AMP = (PUSH_MAX - PUSH_MIN) / 2;
 const WALL_Z = -6.5;
-const DROP_Y = 4.6, DROP_Z = -1.4, GATE_Y = 3.1;
+// the dropper slides along the top of the back glass; medals fall onto the pusher's top shelf
+const DROP_Y = 4.6, DROP_Z = -5.65, GATE_Y = 2.85;
 const MAX_COINS = 320;
 const STEP = 1 / 120;
 const GOLD_VALUE = 5;
@@ -443,10 +444,9 @@ const drawWall = (g, w, h) => {
   g.fillStyle = 'rgba(200,230,250,.25)'; g.fillRect(0, 0, w, 6);
   g.textAlign = 'center'; g.textBaseline = 'middle';
   g.font = '120px Bungee, "Arial Black", sans-serif';
-  g.lineWidth = 10; g.strokeStyle = 'rgba(80,30,0,.9)'; g.strokeText('MEDAL FALLS', w / 2, h * 0.6);
-  g.fillStyle = '#ffb000'; g.fillText('MEDAL FALLS', w / 2, h * 0.6);
-  g.font = '34px Bungee, "Arial Black", sans-serif'; g.fillStyle = 'rgba(244,236,216,.75)';
-  g.fillText('RING  ▸  SLOT  ▸  SHOWER', w / 2, h * 0.87);
+  // logo sits low on the glass: dropper track on top, slot panel under it, then the logo
+  g.lineWidth = 10; g.strokeStyle = 'rgba(80,30,0,.9)'; g.strokeText('MEDAL FALLS', w / 2, h * 0.77);
+  g.fillStyle = '#ffb000'; g.fillText('MEDAL FALLS', w / 2, h * 0.77);
 };
 const wallTex = canvasTex(1024, 384, drawWall);
 const wallH = 5.3 - (PUSH_H + 0.04);
@@ -485,20 +485,24 @@ scene.add(pusherGroup);
 
 // dropper + gate
 const dropper = new THREE.Group();
-const chute = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 0.6), chrome);
+const chute = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 0.75), chrome);
 chute.castShadow = true;
 dropper.add(chute);
 const slotHole = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.02, 0.22), new THREE.MeshBasicMaterial({ color: 0x05080b }));
 slotHole.position.y = -0.255; dropper.add(slotHole);
-const guide = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, DROP_Y, 8),
+const guideLen = DROP_Y - PUSH_H;
+const guide = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, guideLen, 8),
   new THREE.MeshBasicMaterial({ color: 0xffb000, transparent: true, opacity: 0.28, depthWrite: false }));
-guide.position.y = -DROP_Y / 2 - 0.3; dropper.add(guide);
-dropper.position.set(0, DROP_Y + 0.35, DROP_Z);
+guide.position.y = -guideLen / 2 - 0.3; dropper.add(guide);
+dropper.position.set(0, DROP_Y + 0.35, DROP_Z - 0.1);
 scene.add(dropper);
+// the track the dropper slides on, fixed to the glass
+box(TABLE_W * 2 - 0.4, 0.12, 0.1, new THREE.MeshStandardMaterial({ color: 0x1a2531, metalness: 0.8, roughness: 0.4 }),
+  0, DROP_Y + 0.35, WALL_Z + 0.24, { receive: false });
 
 const gate = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.075, 12, 48), redGlow);
 gate.rotation.x = Math.PI / 2;
-gate.position.set(0, GATE_Y, DROP_Z);
+gate.position.set(0, GATE_Y, DROP_Z + 0.12);   // nudged forward so the ring clears the glass
 scene.add(gate);
 let gateFlash = 0;
 
@@ -713,7 +717,7 @@ const sg = slotCanvas.getContext('2d');
 const slotTex = new THREE.CanvasTexture(slotCanvas);
 slotTex.colorSpace = THREE.SRGBColorSpace; slotTex.anisotropy = 8;
 const slotPanel = new THREE.Mesh(new THREE.PlaneGeometry(SLOT_W, SLOT_H), new THREE.MeshBasicMaterial({ map: slotTex, toneMapped: false }));
-slotPanel.position.set(0, 5.2 - SLOT_H / 2, WALL_Z + 0.18);
+slotPanel.position.set(0, 3.0 + SLOT_H / 2, WALL_Z + 0.18);   // below the dropper track, above the logo
 scene.add(slotPanel);
 
 function rr(x, y, w, h, r) { sg.beginPath(); sg.roundRect(x, y, w, h, r); }
