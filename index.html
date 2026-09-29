@@ -132,6 +132,20 @@
     .paytable { display: none; }
     .hint { font-size: 11px; }
   }
+  /* phones held sideways: the table needs the whole height, so the how-to text moves into the Menu */
+  @media (max-height: 520px) {
+    .hints { display: none; }
+    .hud { padding-top: 6px; }
+    .num { font-size: 22px; }
+    .lbl { font-size: 10px; letter-spacing: .1em; }
+    .xpbar { width: 80px; }
+    button.plus { width: 26px; height: 26px; font-size: 15px; }
+    .foot { padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
+    .btns button { padding: 6px 10px; }
+  }
+  .howto { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid #3a5268; border-radius: 8px; background: rgba(11,22,32,.6); }
+  .howto p { font-size: 11px; }
+  .howto b { color: var(--amber); font-weight: 600; }
   @media (prefers-reduced-motion: reduce) {
     .pop, #banner.show { animation-duration: .01s; }
     .fever { animation: none; }
@@ -160,7 +174,7 @@
 
   <footer class="foot">
     <div class="hints">
-      <p class="hint">Move to aim · click or hold to drop · drop through the <b>red ring</b> to spin · gold medals pay 5</p>
+      <p class="hint">Move or tap to aim · press or hold to drop · drop through the <b>red ring</b> to spin · gold medals pay 5</p>
       <p class="paytable"><b>777</b> the whole jackpot + 2 bonus balls · <b>BAR</b> 6 + medal stack · <b>★</b> 3 · <b>◆</b> 1 · <b>ball</b> 3 free spins · <b>stack</b> 25</p>
     </div>
     <div class="btns">
@@ -330,7 +344,8 @@ function resize() {
   const portrait = clamp((1.2 - aspect) / 0.7, 0, 1);
   camera.position.set(0, 10.5 + portrait * 8.5, 14 - portrait * 5.5);
   camTarget.set(0, 0.2 - portrait * 0.2, -0.6 - portrait * 0.2);
-  const halfW = 7.4 - portrait * 1.3, dist = camera.position.distanceTo(camTarget);
+  // portrait still keeps the side glass and pockets in frame: they're what makes the table look fair
+  const halfW = 7.4 - portrait * 0.9, dist = camera.position.distanceTo(camTarget);
   const need = 2 * Math.atan(halfW / dist / aspect) * 180 / Math.PI;
   camera.fov = clamp(Math.max(44, need), 44, 100);
   camera.lookAt(camTarget);
@@ -1078,6 +1093,11 @@ function openMenu() {
   openModal(`
     <h2>Menu</h2>
     <p>Level ${prog.level} · ${bank.toLocaleString()} medals${tray ? ` (+${tray.toLocaleString()} to collect)` : ''} · ${won.toLocaleString()} paid out · jackpot ${Math.floor(prog.jackpot)}</p>
+    <div class="howto">
+      <p><b>How to play:</b> move or tap to aim, press or hold to drop. Medals pushed off the front go to your tray; press Collect to bank them. Medals that fall into the side pockets are lost.</p>
+      <p><b>Slot:</b> drop through the red ring to spin. 777 pays the whole jackpot + 2 bonus balls · BAR 6 + a medal stack · ★ 3 · ◆ 1.</p>
+      <p><b>Prizes:</b> gold medal 5 · medal stack 25 · bonus ball 3 free spins.</p>
+    </div>
     <div class="actions"><button type="button" id="resetAsk">Reset game</button><button type="button" class="buy" id="menuClose">Back to game</button></div>`);
   $('menuClose').addEventListener('click', closeModal);
   $('resetAsk').addEventListener('click', () => {
