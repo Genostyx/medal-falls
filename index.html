@@ -186,7 +186,9 @@ import RAPIER from 'rapier';
 // ---------- layout (world units; a medal is 1.2 across) ----------
 const TABLE_W = 5.5;                 // half width of the playfield
 const TABLE_FRONT = 6, TABLE_BACK = -11;
-const SIDE_OPEN_Z = 0.2;             // side walls stop here; medals off the sides past it are lost (the house cut)
+// Side pockets (the house cut): the glass runs the full length, but each side wall has a low
+// open window here. Medals pushed against the wall at this stretch spill out and are lost.
+const POCKET_Z0 = 0.8, POCKET_Z1 = 3.8, POCKET_H = 0.9;
 const COIN_R = 0.6, COIN_HH = 0.08;
 const PUSH_H = 1.2, PUSH_HALF_D = 4;
 const PUSH_MIN = -2.8, PUSH_MAX = -0.4, PUSH_PERIOD = 3.2;
@@ -415,8 +417,8 @@ const fieldTex = canvasTex(512, 1024, (g, w, h) => {
     const y = zy(1.4 + k * 1.1);
     g.beginPath(); g.moveTo(w / 2 - 70, y); g.lineTo(w / 2, y + 34); g.lineTo(w / 2 + 70, y); g.lineTo(w / 2 + 70, y + 14); g.lineTo(w / 2, y + 48); g.lineTo(w / 2 - 70, y + 14); g.closePath(); g.fill();
   }
-  // lost-medal zones at the open sides
-  const y0 = zy(SIDE_OPEN_Z), y1 = h;
+  // hazard stripes along the table edge at each side pocket
+  const y0 = zy(POCKET_Z0), y1 = zy(POCKET_Z1);
   g.save(); g.beginPath(); g.rect(0, y0, 34, y1 - y0); g.rect(w - 34, y0, 34, y1 - y0); g.clip();
   g.fillStyle = 'rgba(255,74,61,.5)';
   for (let y = y0 - 40; y < y1; y += 22) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y + 60); g.lineTo(w, y + 70); g.lineTo(0, y + 10); g.fill(); }
@@ -457,13 +459,28 @@ box(TABLE_W * 2 + 0.6, 1.5, 0.3, tableSide, 0, TRAY_Y + 0.6, TABLE_FRONT - 0.45 
 box(TABLE_W * 2 + 0.6, 0.06, 0.08, amberGlow, 0, TRAY_Y + 1.38, TABLE_FRONT - 0.3 + TRAY_D);
 for (const s of [-1, 1]) box(0.3, 1.5, TRAY_D, tableSide, s * (TABLE_W + 0.45), TRAY_Y + 0.6, TABLE_FRONT - 0.6 + TRAY_D / 2);
 
-const sideLen = SIDE_OPEN_Z - TABLE_BACK, sideMidZ = (SIDE_OPEN_Z + TABLE_BACK) / 2;
+// side walls as [zStart, zEnd, yBottom, yTop]: solid glass either side of the pocket, a lintel over it
+const SIDE_PIECES = [
+  [TABLE_BACK, POCKET_Z0, -0.5, 5.5],
+  [POCKET_Z1, TABLE_FRONT, -0.5, 5.5],
+  [POCKET_Z0, POCKET_Z1, POCKET_H, 5.5],
+];
+const pocketMat = new THREE.MeshBasicMaterial({ color: 0x04070a });
+const pocketGlow = new THREE.MeshStandardMaterial({ color: 0x3a0906, emissive: 0xff2a1a, emissiveIntensity: 1.4 }); // not the ring's material, which flashes
 for (const s of [-1, 1]) {
-  box(0.3, 5.5, sideLen, acrylic, s * (TABLE_W + 0.15), 2.5, sideMidZ, { receive: false });
-  box(0.34, 0.14, sideLen, chrome, s * (TABLE_W + 0.15), 5.27, sideMidZ, { cast: true });
-  box(0.12, 0.06, sideLen - 0.3, amberGlow, s * (TABLE_W + 0.15), 5.37, sideMidZ);
-  box(0.34, 5.5, 0.14, chrome, s * (TABLE_W + 0.15), 2.5, SIDE_OPEN_Z - 0.07, { cast: true });
-  box(1.2, 1.2, tableLen, tableSide, s * (TABLE_W + 0.9), -0.6, tableMidZ);  // cabinet shoulders
+  const x = s * (TABLE_W + 0.15), shoulderX = s * (TABLE_W + 0.9), pz = (POCKET_Z0 + POCKET_Z1) / 2, pl = POCKET_Z1 - POCKET_Z0;
+  for (const [z0, z1, y0, y1] of SIDE_PIECES) box(0.3, y1 - y0, z1 - z0, acrylic, x, (y0 + y1) / 2, (z0 + z1) / 2, { receive: false });
+  box(0.34, 0.14, tableLen, chrome, x, 5.27, tableMidZ, { cast: true });               // top rail
+  box(0.12, 0.06, tableLen - 0.3, amberGlow, x, 5.37, tableMidZ);
+  box(0.34, 5.5, 0.14, chrome, x, 2.5, TABLE_FRONT - 0.07, { cast: true });            // front post
+  // pocket frame: posts either side and a bar under the lintel, lit so the opening reads at a glance
+  for (const pzEdge of [POCKET_Z0, POCKET_Z1]) box(0.36, POCKET_H + 0.1, 0.12, chrome, x, POCKET_H / 2 - 0.05, pzEdge, { cast: true });
+  box(0.36, 0.12, pl, chrome, x, POCKET_H + 0.06, pz, { cast: true });
+  box(0.1, 0.05, pl - 0.2, pocketGlow, x + s * 0.05, POCKET_H - 0.02, pz);
+  // cabinet shoulders, broken by a dark chute behind each pocket
+  box(1.2, 1.2, POCKET_Z0 - TABLE_BACK, tableSide, shoulderX, -0.6, (TABLE_BACK + POCKET_Z0) / 2);
+  box(1.2, 1.2, TABLE_FRONT - POCKET_Z1, tableSide, shoulderX, -0.6, (POCKET_Z1 + TABLE_FRONT) / 2);
+  box(1.2, 1.2, pl, pocketMat, shoulderX, -0.65, pz, { receive: false });
 }
 
 // drop wall: smoked acrylic with the marquee printed on it
@@ -580,7 +597,8 @@ function buildPhysics() {
   world = new RAPIER.World({ x: 0, y: -38, z: 0 });
   world.timestep = STEP;
   fixedBox(TABLE_W, 0.5, tableLen / 2, 0, -0.5, tableMidZ, 0.45);
-  for (const s of [-1, 1]) fixedBox(0.15, 3, sideLen / 2, s * (TABLE_W + 0.15), 2.5, sideMidZ, 0.2);
+  for (const s of [-1, 1]) for (const [z0, z1, y0, y1] of SIDE_PIECES)
+    fixedBox(0.15, (y1 - y0) / 2, (z1 - z0) / 2, s * (TABLE_W + 0.15), (y0 + y1) / 2, (z0 + z1) / 2, 0.2);
   fixedBox(TABLE_W, 2.2, 0.15, 0, PUSH_H + 0.04 + 2.2, WALL_Z, 0.2);
   const trayZ = TABLE_FRONT - 0.6 + TRAY_D / 2;
   fixedBox(TABLE_W + 0.3, 0.75, 0.15, 0, TRAY_Y + 0.6, TABLE_FRONT - 0.45 + TRAY_D, 0.3);
@@ -648,7 +666,7 @@ function stepSim() {
     if (b.isSleeping()) continue;
     const t = b.translation(), l = b.linvel();
     if (l.x * l.x + l.y * l.y + l.z * l.z > 0.16 || t.y < -0.2 || t.z > edgeZ) continue;
-    if (t.z > SIDE_OPEN_Z && Math.abs(t.x) > sideX) continue;
+    if (t.z > POCKET_Z0 && t.z < POCKET_Z1 && Math.abs(t.x) > sideX) continue; // tipping into a side pocket
     if (t.y > PUSH_H && t.z > f - COIN_R - 0.15) continue; // tipping off the pusher step
     const v = b.angvel();
     b.setAngvel({ x: v.x * 0.5, y: v.y, z: v.z * 0.5 }, false);
