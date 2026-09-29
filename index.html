@@ -263,7 +263,15 @@ import RAPIER from 'rapier';
 const crumb = window.crumb || (() => {});
 crumb('libraries loaded');
 // ?lite in the address: bare-bones graphics (no reflections, no shadows, low resolution), for diagnosing weak devices
-const LITE = /[?&]lite/.test(location.search);
+// Lite is also remembered per device: set from the Menu, or automatically after the 3D view crashes once.
+const LITE_KEY = 'medalfalls.lite';
+if (/[?&]full/.test(location.search)) { try { localStorage.removeItem(LITE_KEY); } catch (e) {} }
+const LITE = /[?&]lite/.test(location.search) || (() => { try { return localStorage.getItem(LITE_KEY) === '1'; } catch (e) { return false; } })();
+function setLiteAndReload(on) {
+  try { on ? localStorage.setItem(LITE_KEY, '1') : localStorage.removeItem(LITE_KEY); } catch (e) {}
+  saveAll();
+  location.replace(location.pathname);   // drop any ?lite/?full so the saved choice is what applies
+}
 
 // ---------- layout (world units; a medal is 1.2 across) ----------
 const TABLE_W = 5.5;                 // half width of the playfield
@@ -381,7 +389,12 @@ const sfx = {
 
 // ---------- renderer / scene ----------
 const canvas = $('c');
-canvas.addEventListener('webglcontextlost', () => window.reportError?.('WebGL context lost (the browser dropped the 3D view, usually from running out of graphics memory)'));
+canvas.addEventListener('webglcontextlost', () => {
+  // The device couldn't keep up. Rather than crash again (browsers block 3D for a site after a few
+  // crashes), switch this device to lite graphics and reload straight away.
+  if (!LITE) { crumb('graphics crashed, switching to lite'); setLiteAndReload(true); return; }
+  window.reportError?.('WebGL context lost even in lite graphics (the browser dropped the 3D view)');
+});
 // Phones get lighter settings from the first frame: high-DPI screens don't need MSAA, and mobile
 // browsers (iOS Safari especially) can drop the whole 3D view under heavy GPU memory use.
 const touchDevice = matchMedia('(pointer: coarse)').matches || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
@@ -394,7 +407,7 @@ try {
   $('loadmsg').textContent = 'Your browser has switched off 3D for this page, usually after an earlier graphics crash. Fully close the browser (swipe it away in the app switcher), reopen it, and load the game again.';
   throw e;
 }
-renderer.setPixelRatio(LITE ? 1 : Math.min(devicePixelRatio, touchDevice ? 1.5 : 2));
+renderer.setPixelRatio(LITE ? 1 : Math.min(devicePixelRatio, touchDevice ? 1.25 : 2));
 crumb('3D view created');
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
@@ -454,6 +467,9 @@ function softwareRenderer() {
 // Software rendering: switch shadows off now, before anything is drawn. Toggling shadows later
 // recompiles every material at once, which is exactly what can knock mobile Safari's 3D view out.
 if (LITE || softwareRenderer()) { renderer.shadowMap.enabled = false; key.castShadow = false; renderer.setPixelRatio(1); lowQuality = true; }
+// Phones: no shadows. The shadow pass draws every medal a second time each frame, and it's what
+// pushed phone GPUs over the edge; reflections stay, so medals still look like metal.
+else if (touchDevice) { renderer.shadowMap.enabled = false; key.castShadow = false; }
 // Mid-game the only adjustment is resolution, which needs no shader rebuilds.
 function setLowQuality() {
   if (lowQuality) return;
@@ -1188,8 +1204,13 @@ function openMenu() {
       <p><b>Slot:</b> drop through the red ring to spin. 777 pays the whole jackpot + 2 bonus balls · BAR 6 + a medal stack · ★ 3 · ◆ 1.</p>
       <p><b>Prizes:</b> gold medal 5 · medal stack 25 · bonus ball 3 free spins.</p>
     </div>
-    <div class="actions"><button type="button" id="resetAsk">Reset game</button><button type="button" class="buy" id="menuClose">Back to game</button></div>`);
+    <div class="actions">
+      <button type="button" id="gfxToggle" title="Lite graphics run on weaker phones">Graphics: ${LITE ? 'Lite' : 'Full'}</button>
+      <button type="button" id="resetAsk">Reset game</button>
+      <button type="button" class="buy" id="menuClose">Back to game</button>
+    </div>`);
   $('menuClose').addEventListener('click', closeModal);
+  $('gfxToggle').addEventListener('click', () => setLiteAndReload(!LITE));
   $('resetAsk').addEventListener('click', () => {
     openModal(`
       <h2>Reset game?</h2>
